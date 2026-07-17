@@ -49,8 +49,22 @@ const baseShape = (type, x, y, index, props) => ({
 // fixed char-width factor estimates the box that fits the text without wrapping.
 const FONT_SIZES = { s: 18, m: 24, l: 36, xl: 44 }
 
-export function geoSizeForText(text = '', size = 'm', geo = 'rectangle') {
-  const fs = FONT_SIZES[size] || 24
+// Size ladder: everything the tools create is bumped up one step (the tiny "s"
+// is never used). s->m, m->l, l->xl. tldraw has no tier above xl, so a bigger
+// top is done with scale. Applied once at create time.
+const SIZE_UP = {
+  s: { size: 'm', scale: 1 },
+  m: { size: 'l', scale: 1 },
+  l: { size: 'xl', scale: 1 },
+  xl: { size: 'xl', scale: 1.5 },
+}
+export function bumpSize(size = 'm') {
+  return SIZE_UP[size] || SIZE_UP.m
+}
+
+// Box that fits the text, given the *stored* (already-bumped) size + scale.
+export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale = 1) {
+  const fs = (FONT_SIZES[size] || 24) * (scale || 1)
   const lines = String(text || '').split('\n')
   const maxLen = Math.max(1, ...lines.map((l) => l.length))
   // non-rectangular shapes (ellipse/diamond/…) need extra room for the label
@@ -61,26 +75,29 @@ export function geoSizeForText(text = '', size = 'm', geo = 'rectangle') {
 }
 
 export function buildGeo({ text = '', x = 0, y = 0, w, h, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
-  const fit = geoSizeForText(text, size, geo)
+  const { size: s, scale } = bumpSize(size)
+  const fit = geoSizeForText(text, s, geo, scale)
   return baseShape('geo', x, y, index, {
-    w: w ?? fit.w, h: h ?? fit.h, geo, dash, growY: 0, url: '', scale: 1,
-    color, labelColor: 'black', fill, size, font: 'draw',
+    w: w ?? fit.w, h: h ?? fit.h, geo, dash, growY: 0, url: '', scale,
+    color, labelColor: 'black', fill, size: s, font: 'draw',
     align: 'middle', verticalAlign: 'middle', richText: richText(text),
   })
 }
 
 export function buildText({ text = '', x = 0, y = 0, color = 'black', size = 'm', index }) {
+  const { size: s, scale } = bumpSize(size)
   return baseShape('text', x, y, index, {
-    color, size, w: 8, font: 'draw', textAlign: 'start',
-    autoSize: true, scale: 1, richText: richText(text),
+    color, size: s, w: 8, font: 'draw', textAlign: 'start',
+    autoSize: true, scale, richText: richText(text),
   })
 }
 
 export function buildNote({ text = '', x = 0, y = 0, color = 'yellow', size = 'm', index }) {
+  const { size: s, scale } = bumpSize(size)
   return baseShape('note', x, y, index, {
-    color, richText: richText(text), size, font: 'draw',
+    color, richText: richText(text), size: s, font: 'draw',
     align: 'middle', verticalAlign: 'middle', labelColor: 'black',
-    growY: 0, fontSizeAdjustment: 1, url: '', scale: 1, textLastEditedBy: null,
+    growY: 0, fontSizeAdjustment: 1, url: '', scale, textLastEditedBy: null,
   })
 }
 
@@ -94,12 +111,13 @@ export function buildUml({ name = 'ClassName', fields = [], methods = [], x = 0,
 }
 
 export function buildArrow({ text = '', color = 'black', dash = 'draw', size = 'm', index, bend = 0 }) {
+  const { size: s, scale } = bumpSize(size)
   return baseShape('arrow', 0, 0, index, {
-    kind: 'arc', elbowMidPoint: 0.5, dash, size, fill: 'none',
+    kind: 'arc', elbowMidPoint: 0.5, dash, size: s, fill: 'none',
     color, labelColor: 'black', bend,
     start: { x: 0, y: 0 }, end: { x: 2, y: 0 },
     arrowheadStart: 'none', arrowheadEnd: 'arrow',
-    richText: richText(text), labelPosition: 0.5, font: 'draw', scale: 1,
+    richText: richText(text), labelPosition: 0.5, font: 'draw', scale,
   })
 }
 

@@ -4,3 +4,4 @@ web/dist/
 .playwright-mcp/
 *.log
 data/
+data-backup-*/

@@ -109,6 +109,11 @@ server.registerTool('get_board', {
   inputSchema: {},
 }, wrap(() => bapi('/board')))
 
+server.registerTool('check_overlap', {
+  description: 'Deterministic layout-quality check for the active board. Returns overlapRatio (bad-overlap area ÷ total node area — a scalar; ~0 = clean), overlappingPairs, verdict (clean|minor|bad), worstPair, and topOffenders (shape ids with the most overlap). Container↔child nesting is intentional and NOT counted. Use it to decide whether to rearrange (move/space/reflow) and to verify the result afterward.',
+  inputSchema: {},
+}, wrap(() => bapi('/overlap')))
+
 server.registerTool('create_node', {
   description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w/h only to force a size). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
@@ -178,6 +183,27 @@ server.registerTool('update_node', {
   },
 }, wrap((a) => bapi('/update', 'POST', a)))
 
+server.registerTool('move_container', {
+  description: 'Move a container box AND every node inside it together (like grabbing the frame in the UI). Pass an absolute target for the container top-left (x,y) OR a relative delta (dx,dy). Arrows bound to moved nodes follow automatically. The container is any box; everything geometrically inside its bounds moves with it.',
+  inputSchema: {
+    id: z.string(),
+    x: z.number().optional().describe('new top-left x (absolute)'),
+    y: z.number().optional().describe('new top-left y (absolute)'),
+    dx: z.number().optional().describe('move by this much on x (relative)'),
+    dy: z.number().optional().describe('move by this much on y (relative)'),
+  },
+}, wrap((a) => bapi('/move-container', 'POST', a)))
+
+server.registerTool('space_board', {
+  description: 'Tidy the whole active board: space every node apart to a minimum gap, grow each container to wrap its contents, and separate containers from each other (contents move with them). Also reflows arrow labels. Pairs with check_overlap: measure → space_board → re-measure.',
+  inputSchema: { gap: z.number().optional().describe('minimum px gap between nodes (default 60)') },
+}, wrap((a) => bapi('/space', 'POST', a)))
+
+server.registerTool('space_container', {
+  description: 'Space apart ONLY the nodes inside one container (given its box id) and grow that container to fit, keeping its top-left anchored. The rest of the board is left untouched.',
+  inputSchema: { id: z.string().describe('the container box id'), gap: z.number().optional().describe('minimum px gap (default 60)') },
+}, wrap((a) => bapi('/space', 'POST', { gap: a.gap, container: a.id })))
+
 server.registerTool('delete_shapes', {
   description: 'Delete shapes on the active board by id. Also removes arrows bound to them.',
   inputSchema: { ids: z.array(z.string()) },
@@ -204,6 +230,8 @@ Ops:
 - {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
 - {op:"update", id, text?, x?, y?, w?, h?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box re-fits text unless w/h given)
 - {op:"move", id, x, y}
+- {op:"move_container", id, x?, y?, dx?, dy?}   (moves the box + everything inside it)
+- {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
 - {op:"delete", ids:[...]}
 Returns {refs:{ref:createdId}, count}. Colors: ${COLORS}. Shapes: ${GEOS}.`,
   inputSchema: { ops: z.array(z.object({ op: z.string() }).catchall(z.any())).describe('ordered list of operations') },

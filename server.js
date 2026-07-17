@@ -89,6 +89,51 @@ function summarize(room) {
   return { shapes, counts: { shapes: shapes.length, bindings: bindings.length } }
 }
 
+// Deterministic overlap metric for a board. Containers are treated as FRAMES,
+// not boxes: any box that fully encloses another node is a container and is
+// excluded from the measure (a frame is meant to sit over its contents). Only
+// overlaps between leaf (non-container) boxes are counted. Returns a scalar
+// `overlapRatio` (overlap area / total leaf area) plus the worst offenders, so
+// an agent can decide whether to run "space"/reflow and verify afterward.
+function overlapReport(room) {
+  const NODE = new Set(['geo', 'uml', 'note', 'text'])
+  const all = records(room)
+    .filter((r) => r.typeName === 'shape' && NODE.has(r.type) && r.props?.w != null)
+    .map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }))
+  const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5
+  const containerIds = new Set(all.filter((a) => all.some((b) => contains(a, b))).map((a) => a.id))
+  const rects = all.filter((r) => !containerIds.has(r.id)) // leaves only
+  let overlapArea = 0, pairs = 0, worst = null
+  const offenders = {}
+  for (let i = 0; i < rects.length; i++) {
+    for (let j = i + 1; j < rects.length; j++) {
+      const A = rects[i], B = rects[j]
+      const ix = Math.max(0, Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x))
+      const iy = Math.max(0, Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y))
+      const area = ix * iy
+      if (area <= 0) continue
+      overlapArea += area
+      pairs++
+      offenders[A.id] = (offenders[A.id] || 0) + area
+      offenders[B.id] = (offenders[B.id] || 0) + area
+      if (!worst || area > worst.area) worst = { a: A.id, b: B.id, area: Math.round(area) }
+    }
+  }
+  const totalArea = rects.reduce((s, r) => s + r.w * r.h, 0) || 1
+  const ratio = overlapArea / totalArea
+  const topOffenders = Object.entries(offenders).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, a]) => ({ id, area: Math.round(a) }))
+  return {
+    leafNodes: rects.length,
+    containers: containerIds.size,
+    overlappingPairs: pairs,
+    overlapArea: Math.round(overlapArea),
+    overlapRatio: Math.round(ratio * 1000) / 1000,
+    verdict: pairs === 0 ? 'clean' : ratio < 0.03 ? 'minor' : 'bad',
+    worstPair: worst,
+    topOffenders,
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = ''
@@ -124,7 +169,7 @@ function applyUpdate(store, b) {
   if (Array.isArray(b.fields) && 'fields' in next.props) next.props.fields = b.fields.map(String)
   if (Array.isArray(b.methods) && 'methods' in next.props) next.props.methods = b.methods.map(String)
   if (rec.type === 'geo' && b.w == null && b.h == null) {
-    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo)
+    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale)
     next.props.w = fit.w
     next.props.h = fit.h
   }
@@ -134,6 +179,105 @@ function applyUpdate(store, b) {
   }
   store.put(next)
   return next.id
+}
+
+// Move a container box and everything geometrically inside it by (dx, dy).
+// Enclosed = geo/uml/note/text shapes whose box sits within the container's box
+// (transitive, so nested groups come along). Arrows bound to moved shapes follow
+// automatically. Returns the ids that moved (container first).
+function moveEnclosed(store, id, dx, dy) {
+  const c = store.get(id)
+  if (!c || c.props?.w == null) throw new Error(`container "${id}" not found (must be a box with a size)`)
+  const NODE = new Set(['geo', 'uml', 'note', 'text'])
+  const cx = c.x, cy = c.y, cw = c.props.w, ch = c.props.h
+  const inside = (s) =>
+    s.id !== id && s.typeName === 'shape' && NODE.has(s.type) && s.props?.w != null &&
+    s.x >= cx - 0.5 && s.y >= cy - 0.5 && s.x + s.props.w <= cx + cw + 0.5 && s.y + s.props.h <= cy + ch + 0.5
+  const targets = [c, ...store.getAll().filter(inside)]
+  for (const s of targets) store.put({ ...s, x: s.x + dx, y: s.y + dy })
+  return targets.map((s) => s.id)
+}
+
+// Resolve a container move request {id, x?, y?, dx?, dy?} to a delta and apply it.
+function applyMoveContainer(store, b) {
+  const c = store.get(b.id)
+  if (!c || c.props?.w == null) throw new Error(`container "${b.id}" not found (must be a box with a size)`)
+  const dx = b.x != null ? b.x - c.x : (b.dx || 0)
+  const dy = b.y != null ? b.y - c.y : (b.dy || 0)
+  return moveEnclosed(store, b.id, dx, dy)
+}
+
+// Space node boxes apart to a minimum gap (server-side port of the UI's "space"
+// button). Whole board (containerId omitted): space each container's children,
+// grow the container to wrap them, then space containers against each other
+// (contents move with them). Scoped (containerId given): space just that
+// container's contents and grow it, keeping its top-left anchored. Returns the
+// number of shapes touched.
+function spaceLayout(store, gap, containerId) {
+  const NODE = new Set(['geo', 'uml', 'note', 'text'])
+  const rects = store.getAll()
+    .filter((r) => r.typeName === 'shape' && NODE.has(r.type) && r.props?.w != null)
+    .map((r) => ({ id: r.id, type: r.type, x: r.x, y: r.y, w: r.props.w, h: r.props.h }))
+  if (rects.length < 2) return 0
+  const PAD = Math.max(16, Math.round(gap / 2))
+  const byId = new Map(rects.map((r) => [r.id, r]))
+  const areaOf = (r) => r.w * r.h
+  const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5
+  const parent = new Map()
+  for (const r of rects) { let best = null; for (const c of rects) if (contains(c, r) && (!best || areaOf(c) < areaOf(best))) best = c; parent.set(r.id, best) }
+  const children = new Map()
+  for (const r of rects) { const p = parent.get(r.id); if (p) { const a = children.get(p.id) || []; a.push(r); children.set(p.id, a) } }
+  const isC = (r) => children.has(r.id)
+  const desc = (r) => { const o = []; const st = [...(children.get(r.id) || [])]; while (st.length) { const x = st.pop(); o.push(x); if (children.has(x.id)) st.push(...children.get(x.id)) } return o }
+  const move = (r, dx, dy) => { r.x += dx; r.y += dy; if (isC(r)) for (const d of desc(r)) { d.x += dx; d.y += dy } }
+  const sep = (m) => {
+    for (let it = 0; it < 400; it++) {
+      let mv = false
+      for (let i = 0; i < m.length; i++) for (let j = i + 1; j < m.length; j++) {
+        const A = m[i], B = m[j]
+        const dx = (B.x + B.w / 2) - (A.x + A.w / 2), dy = (B.y + B.h / 2) - (A.y + A.h / 2)
+        const ox = (A.w + B.w) / 2 + gap - Math.abs(dx), oy = (A.h + B.h) / 2 + gap - Math.abs(dy)
+        if (ox > 0 && oy > 0) {
+          if (ox <= oy) { const p = (ox / 2) * (dx < 0 ? -1 : 1); move(A, -p, 0); move(B, p, 0) }
+          else { const p = (oy / 2) * (dy < 0 ? -1 : 1); move(A, 0, -p); move(B, 0, p) }
+          mv = true
+        }
+      }
+      if (!mv) break
+    }
+  }
+  const grow = (c) => {
+    const k = children.get(c.id); if (!k || !k.length) return
+    const mnX = Math.min(...k.map((x) => x.x)), mnY = Math.min(...k.map((x) => x.y))
+    const mxX = Math.max(...k.map((x) => x.x + x.w)), mxY = Math.max(...k.map((x) => x.y + x.h))
+    c.x = mnX - PAD; c.y = mnY - PAD; c.w = (mxX - mnX) + 2 * PAD; c.h = (mxY - mnY) + 2 * PAD
+  }
+  const layout = (m) => { for (const x of m) if (isC(x)) { layout(children.get(x.id)); grow(x) } if (m.length > 1) sep(m) }
+
+  let affected
+  if (containerId) {
+    const c = byId.get(containerId)
+    if (!c) throw new Error(`container "${containerId}" not found`)
+    if (!isC(c)) throw new Error(`"${containerId}" has no nodes inside it to space`)
+    const ox = c.x, oy = c.y
+    layout(children.get(c.id))
+    grow(c)
+    move(c, ox - c.x, oy - c.y) // re-anchor top-left
+    affected = new Set([c.id, ...desc(c).map((d) => d.id)])
+  } else {
+    layout(rects.filter((r) => !parent.get(r.id)))
+    affected = new Set(rects.map((r) => r.id))
+  }
+
+  for (const id of affected) {
+    const r = byId.get(id)
+    const rec = store.get(id)
+    if (!rec) continue
+    const next = { ...rec, x: Math.round(r.x), y: Math.round(r.y) }
+    if (isC(r) && rec.type === 'geo') next.props = { ...rec.props, w: Math.round(r.w), h: Math.round(r.h) }
+    store.put(next)
+  }
+  return affected.size
 }
 
 // Nudge each arrow's label along its arrow so it doesn't sit on top of node
@@ -260,6 +404,10 @@ const server = http.createServer(async (req, res) => {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
       return json(res, 200, { board: boardId(url), ...summarize(roomFor(url)) })
     }
+    if (M === 'GET' && p === '/overlap') {
+      if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
+      return json(res, 200, overlapReport(roomFor(url)))
+    }
 
     // ---- document mutation ----
     if (M === 'POST') {
@@ -325,6 +473,20 @@ const server = http.createServer(async (req, res) => {
         await room.updateStore((store) => { updated = applyUpdate(store, b) })
         return json(res, 200, { id: updated })
       }
+      if (p === '/move-container') {
+        let moved = []
+        await room.updateStore((store) => { moved = applyMoveContainer(store, b) })
+        return json(res, 200, { moved })
+      }
+      if (p === '/space') {
+        const gap = Number.isFinite(b.gap) ? b.gap : 60
+        let touched = 0
+        await room.updateStore((store) => {
+          touched = spaceLayout(store, gap, b.container)
+          reflowArrowLabels(store)
+        })
+        return json(res, 200, { touched, gap, ...(b.container ? { container: b.container } : {}) })
+      }
       if (p === '/delete') {
         const ids = Array.isArray(b.ids) ? b.ids : b.id ? [b.id] : []
         await room.updateStore((store) => {
@@ -381,6 +543,10 @@ const server = http.createServer(async (req, res) => {
               if (op.ref) refs[op.ref] = arrow.id
             } else if (k === 'update' || k === 'move') {
               applyUpdate(store, { ...op, id: rid(op.id) })
+            } else if (k === 'move_container') {
+              applyMoveContainer(store, { ...op, id: rid(op.id) })
+            } else if (k === 'space') {
+              spaceLayout(store, Number.isFinite(op.gap) ? op.gap : 60, op.container ? rid(op.container) : undefined)
             } else if (k === 'delete') {
               const ids = (Array.isArray(op.ids) ? op.ids : [op.id]).map(rid)
               const idSet = new Set(ids)
