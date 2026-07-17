@@ -1,0 +1,16 @@
+[Unit]
+Description=Shared Whiteboard - tldraw sync backend + web UI + MCP HTTP API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=WB_PORT=5858
+Environment=WB_HOST=127.0.0.1
+WorkingDirectory=%h/ClaudeChats/Shared Whiteboard
+ExecStart=/usr/bin/env node "%h/ClaudeChats/Shared Whiteboard/server.js"
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
