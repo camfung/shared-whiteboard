@@ -9,10 +9,15 @@ const HEX: Record<string, string> = {
   green: '#099268', 'light-green': '#4cb05e', 'light-red': '#f87777', red: '#e03131',
 }
 
-// keep in sync with uml-schema.js:umlHeight
+// keep in sync with uml-schema.js:umlHeight / umlWidth
 export function umlHeight(fields: string[] = [], methods: string[] = []) {
   const rows = fields.length + methods.length
   return 36 + rows * 20 + (methods.length ? 12 : 0) + 12
+}
+export function umlWidth(name = '', fields: string[] = [], methods: string[] = []) {
+  const rows = [name, ...fields, ...methods]
+  const maxLen = Math.max(8, ...rows.map((r) => String(r).length))
+  return Math.max(180, Math.round(maxLen * 7.6) + 28)
 }
 
 type UmlProps = { name: string; fields: string[]; methods: string[]; w: number; h: number; color: string }
@@ -25,7 +30,7 @@ function parse(text: string) {
   const name = (parts[0] || '').trim() || 'ClassName'
   const fields = (parts[1] || '').split('\n').map((s) => s.trim()).filter(Boolean)
   const methods = (parts[2] || '').split('\n').map((s) => s.trim()).filter(Boolean)
-  return { name, fields, methods, h: umlHeight(fields, methods) }
+  return { name, fields, methods, h: umlHeight(fields, methods), w: umlWidth(name, fields, methods) }
 }
 
 const FONT = "'Hurmit Nerd Font', ui-monospace, monospace"

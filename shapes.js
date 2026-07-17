@@ -1,7 +1,7 @@
 // Builders that turn semantic requests into valid tldraw v5.2.5 records.
 // Templates captured empirically from a live tldraw editor (see README).
 import { getIndexAbove, ZERO_INDEX_KEY } from '@tldraw/utils'
-import { umlHeight } from './uml-schema.js'
+import { umlHeight, umlWidth } from './uml-schema.js'
 
 export const COLORS = [
   'black', 'grey', 'light-violet', 'violet', 'blue', 'light-blue',
@@ -45,9 +45,25 @@ const baseShape = (type, x, y, index, props) => ({
   props,
 })
 
-export function buildGeo({ text = '', x = 0, y = 0, w = 200, h = 120, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
+// tldraw label font sizes per size step (approx, px). Hurmit is monospace, so a
+// fixed char-width factor estimates the box that fits the text without wrapping.
+const FONT_SIZES = { s: 18, m: 24, l: 36, xl: 44 }
+
+export function geoSizeForText(text = '', size = 'm', geo = 'rectangle') {
+  const fs = FONT_SIZES[size] || 24
+  const lines = String(text || '').split('\n')
+  const maxLen = Math.max(1, ...lines.map((l) => l.length))
+  // non-rectangular shapes (ellipse/diamond/…) need extra room for the label
+  const roomy = geo === 'rectangle' ? 1 : 1.4
+  const w = Math.round(Math.max(80, maxLen * fs * 0.62 + 32) * roomy)
+  const h = Math.round(Math.max(48, lines.length * fs * 1.4 + 24) * roomy)
+  return { w, h }
+}
+
+export function buildGeo({ text = '', x = 0, y = 0, w, h, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
+  const fit = geoSizeForText(text, size, geo)
   return baseShape('geo', x, y, index, {
-    w, h, geo, dash, growY: 0, url: '', scale: 1,
+    w: w ?? fit.w, h: h ?? fit.h, geo, dash, growY: 0, url: '', scale: 1,
     color, labelColor: 'black', fill, size, font: 'draw',
     align: 'middle', verticalAlign: 'middle', richText: richText(text),
   })
@@ -68,9 +84,10 @@ export function buildNote({ text = '', x = 0, y = 0, color = 'yellow', size = 'm
   })
 }
 
-export function buildUml({ name = 'ClassName', fields = [], methods = [], x = 0, y = 0, w = 220, h, color = 'blue', index }) {
+export function buildUml({ name = 'ClassName', fields = [], methods = [], x = 0, y = 0, w, h, color = 'blue', index }) {
   return baseShape('uml', x, y, index, {
-    name, fields, methods, w,
+    name, fields, methods,
+    w: w ?? umlWidth(name, fields, methods),
     h: h ?? umlHeight(fields, methods),
     color,
   })

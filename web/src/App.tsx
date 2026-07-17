@@ -3,6 +3,7 @@ import { Tldraw, defaultShapeUtils, defaultBindingUtils } from 'tldraw'
 import { useSync } from '@tldraw/sync'
 import { inlineBase64AssetStore } from '@tldraw/editor'
 import 'tldraw/tldraw.css'
+import './hurmit.css' // override tldraw fonts with Hurmit (after tldraw.css)
 import { UmlShapeUtil } from './uml'
 
 // Full util sets — the custom uml shape alongside the defaults. useSync builds
@@ -34,6 +35,7 @@ export default function App() {
   const [boards, setBoards] = useState<Board[]>([])
   const [current, setCurrent] = useState<string | null>(hashBoard())
   const [templates, setTemplates] = useState<Template[]>([])
+  const [copied, setCopied] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -73,6 +75,15 @@ export default function App() {
   useEffect(() => { if (current) location.hash = `board=${encodeURIComponent(current)}` }, [current])
 
   const select = (id: string) => setCurrent(id)
+
+  const copyId = async () => {
+    if (!current || !navigator.clipboard) return
+    try {
+      await navigator.clipboard.writeText(current)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1000)
+    } catch { /* clipboard blocked — ignore */ }
+  }
 
   const addUml = () => {
     const ed = (window as any).editor
@@ -130,6 +141,11 @@ export default function App() {
     fontFamily: 'inherit', fontSize: 13, padding: '3px 10px', cursor: 'pointer',
     border: '1px solid #b7bca8', borderRadius: 6, background: '#f7f8f1', color: '#3a3f2f',
   }
+  const chip: React.CSSProperties = {
+    fontFamily: 'inherit', fontSize: 11, padding: '2px 8px', cursor: 'pointer',
+    border: '1px solid #b7bca8', borderRadius: 999, background: '#f7f8f1', color: '#3a3f2f',
+    opacity: 0.85, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5,
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
@@ -142,6 +158,16 @@ export default function App() {
             <option key={b.id} value={b.id}>{b.name} · {b.shapes}</option>
           ))}
         </select>
+        {current && (
+          <span
+            style={chip}
+            onClick={copyId}
+            title="Copy this board's id"
+            role="button"
+          >
+            {copied ? 'copied ✓' : <>{current} <span style={{ opacity: 0.6 }}>⧉</span></>}
+          </span>
+        )}
         <button style={btn} onClick={newBoard}>＋ new</button>
         <button style={btn} onClick={renameBoard} disabled={!current}>✎ rename</button>
         <span style={{ width: 1, height: 20, background: '#c7cbb8' }} />
@@ -158,9 +184,11 @@ export default function App() {
           <option value="">stamp ▾</option>
           {templates.map((t) => <option key={t.name} value={t.name}>{t.name} · {t.shapes}</option>)}
         </select>
-        <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
-          {current ? `id: ${current}` : 'select or create a board'}
-        </span>
+        {!current && (
+          <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
+            select or create a board
+          </span>
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {current ? (

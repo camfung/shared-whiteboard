@@ -1,0 +1,21 @@
+/* Default font = Hurmit.
+
+   tldraw sets fonts two ways:
+   - Arrow labels / our UML shape read the --tl-font-* CSS vars -> override them.
+   - Geo/text/note labels set `font-family: tldraw_draw` INLINE on .tl-text-label,
+     which beats the vars. An inline style is only overridable with !important.
+
+   Hurmit is a system font, so referencing it by family name resolves
+   client-side (no @font-face / fetch). Scoped to the draw (default) font style,
+   so sans/serif/mono remain real alternatives in the font picker. */
+
+.tl-container {
+  --tl-font-draw: 'Hurmit Nerd Font', ui-monospace, monospace;
+  --tl-font-sans: 'Hurmit Nerd Font', ui-monospace, monospace;
+  --tl-font-serif: 'Hurmit Nerd Font', ui-monospace, monospace;
+  --tl-font-mono: 'Hurmit Nerd Font Mono', 'Hurmit Nerd Font', ui-monospace, monospace;
+}
+
+.tl-container .tl-text-label[style*="tldraw_draw"] {
+  font-family: 'Hurmit Nerd Font', ui-monospace, monospace !important;
+}

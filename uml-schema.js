@@ -19,3 +19,11 @@ export function umlHeight(fields = [], methods = []) {
   const rows = fields.length + methods.length
   return 36 + rows * 20 + (methods.length ? 12 : 0) + 12
 }
+
+// Width that fits the widest row (title / field / method). 12px Hurmit is
+// monospace, so ~7.6px/char is a good estimate. Kept in sync with the browser.
+export function umlWidth(name = '', fields = [], methods = []) {
+  const rows = [name, ...fields, ...methods]
+  const maxLen = Math.max(8, ...rows.map((r) => String(r).length))
+  return Math.max(180, Math.round(maxLen * 7.6) + 28)
+}

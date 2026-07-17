@@ -110,10 +110,11 @@ server.registerTool('get_board', {
 }, wrap(() => bapi('/board')))
 
 server.registerTool('create_node', {
-  description: `Create a labeled box/shape on the active board. Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w/h only to force a size). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: z.string(), x: z.number(), y: z.number(),
-    w: z.number().optional(), h: z.number().optional(),
+    w: z.number().optional().describe('width; omit to auto-fit text'),
+    h: z.number().optional().describe('height; omit to auto-fit text'),
     shape: z.string().optional().describe('geo shape, default rectangle'),
     color: z.string().optional(), fill: z.string().optional(),
   },
@@ -141,7 +142,7 @@ server.registerTool('create_uml', {
 }, wrap((a) => bapi('/uml', 'POST', a)))
 
 server.registerTool('update_uml', {
-  description: 'Update a UML block by id. Pass name/fields/methods/color to replace them (fields/methods replace the whole list). Also moves/resizes via x,y,w.',
+  description: 'Update a UML block by id. Pass name/fields/methods/color to replace them (fields/methods replace the whole list). The block auto-resizes to fit its rows (width + height) unless you pass an explicit w. Also moves via x,y.',
   inputSchema: {
     id: z.string(),
     name: z.string().optional(),
@@ -168,7 +169,7 @@ server.registerTool('connect', {
 }, wrap((a) => bapi('/connect', 'POST', a)))
 
 server.registerTool('update_node', {
-  description: 'Update a shape on the active board by id: text, position (x,y), size (w,h), color, fill. Pass only fields to change.',
+  description: 'Update a shape on the active board by id: text, position (x,y), size (w,h), color, fill. Pass only fields to change. Boxes auto-resize to fit their text unless you pass an explicit w or h.',
   inputSchema: {
     id: z.string(), text: z.string().optional(),
     x: z.number().optional(), y: z.number().optional(),
@@ -186,6 +187,27 @@ server.registerTool('clear_board', {
   description: 'Delete every shape and arrow on the active board (keeps the board itself).',
   inputSchema: {},
 }, wrap(() => bapi('/clear', 'POST', {})))
+
+server.registerTool('reflow_labels', {
+  description: 'Reposition every arrow label on the active board so labels avoid overlapping node boxes. Runs automatically after apply_ops; call this to tidy an existing board.',
+  inputSchema: {},
+}, wrap(() => bapi('/reflow-labels', 'POST', {})))
+
+// ---- bulk: many edits in one call ----
+server.registerTool('apply_ops', {
+  description: `Apply MANY board edits in ONE call (single transaction) — use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
+Ops:
+- {op:"node", ref?, text, x, y, w?, h?, shape?, color?, fill?}  (box auto-fits its text)
+- {op:"text", ref?, text, x, y, color?, size?}
+- {op:"note", ref?, text, x, y, color?}
+- {op:"uml",  ref?, name, x, y, fields?, methods?, color?}
+- {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
+- {op:"update", id, text?, x?, y?, w?, h?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box re-fits text unless w/h given)
+- {op:"move", id, x, y}
+- {op:"delete", ids:[...]}
+Returns {refs:{ref:createdId}, count}. Colors: ${COLORS}. Shapes: ${GEOS}.`,
+  inputSchema: { ops: z.array(z.object({ op: z.string() }).catchall(z.any())).describe('ordered list of operations') },
+}, wrap((a) => bapi('/batch', 'POST', a)))
 
 // ---- reusable templates ----
 server.registerTool('list_templates', {

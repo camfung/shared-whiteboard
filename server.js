@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import {
   buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml,
-  richText, nextIndex, COLORS, FILLS, GEO, SIZES,
+  geoSizeForText, richText, nextIndex, COLORS, FILLS, GEO, SIZES,
 } from './shapes.js'
-import { umlHeight } from './uml-schema.js'
+import { umlHeight, umlWidth } from './uml-schema.js'
+import { getIndexAbove } from '@tldraw/utils'
 import {
   getRoom, listBoards, createBoard, renameBoard, deleteBoard, findBoards, boardExists,
 } from './boards.js'
@@ -102,6 +103,92 @@ function json(res, code, obj) {
 }
 async function put(room, ...recs) {
   await room.updateStore((store) => { for (const r of recs) store.put(r) })
+}
+
+// Apply one update to a shape already in the store. Auto-fits box/uml size to
+// its text unless an explicit w/h is given. Shared by /update and /batch.
+function applyUpdate(store, b) {
+  checkEnum('color', b.color, COLORS)
+  checkEnum('fill', b.fill, FILLS)
+  const rec = store.get(b.id)
+  if (!rec) throw new Error(`shape ${b.id} not found`)
+  const next = { ...rec, props: { ...rec.props } }
+  if (b.x != null) next.x = b.x
+  if (b.y != null) next.y = b.y
+  if (b.w != null && 'w' in next.props) next.props.w = b.w
+  if (b.h != null && 'h' in next.props) next.props.h = b.h
+  if (b.color != null && 'color' in next.props) next.props.color = b.color
+  if (b.fill != null && 'fill' in next.props) next.props.fill = b.fill
+  if (b.text != null && 'richText' in next.props) next.props.richText = richText(b.text)
+  if (b.name != null && 'name' in next.props) next.props.name = String(b.name)
+  if (Array.isArray(b.fields) && 'fields' in next.props) next.props.fields = b.fields.map(String)
+  if (Array.isArray(b.methods) && 'methods' in next.props) next.props.methods = b.methods.map(String)
+  if (rec.type === 'geo' && b.w == null && b.h == null) {
+    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo)
+    next.props.w = fit.w
+    next.props.h = fit.h
+  }
+  if (rec.type === 'uml') {
+    next.props.h = umlHeight(next.props.fields, next.props.methods)
+    if (b.w == null) next.props.w = umlWidth(next.props.name, next.props.fields, next.props.methods)
+  }
+  store.put(next)
+  return next.id
+}
+
+// Nudge each arrow's label along its arrow so it doesn't sit on top of node
+// boxes. Pure heuristic: it approximates every arrow as a straight line between
+// the CENTERS of its two bound shapes and ignores tldraw's actual curve. The
+// label bbox estimate (~20px monospace) is intentionally rough.
+function reflowArrowLabels(store) {
+  const all = store.getAll()
+  const NODE_TYPES = new Set(['geo', 'uml', 'note', 'text'])
+  const nodeRects = []
+  for (const r of all) {
+    if (r.typeName !== 'shape' || !NODE_TYPES.has(r.type)) continue
+    const w = r.props?.w, h = r.props?.h
+    if (w == null || h == null) continue
+    nodeRects.push({ x: r.x, y: r.y, w, h })
+  }
+  // total intersection area of a label rect against every node rect
+  const overlapArea = (ax, ay, aw, ah) => {
+    let area = 0
+    for (const b of nodeRects) {
+      const ix = Math.max(0, Math.min(ax + aw, b.x + b.w) - Math.max(ax, b.x))
+      const iy = Math.max(0, Math.min(ay + ah, b.y + b.h) - Math.max(ay, b.y))
+      area += ix * iy
+    }
+    return area
+  }
+  const byId = new Map(all.map((r) => [r.id, r]))
+  const bindings = all.filter((r) => r.typeName === 'binding' && r.type === 'arrow')
+  for (const arrow of all) {
+    if (arrow.typeName !== 'shape' || arrow.type !== 'arrow') continue
+    const text = extractText(arrow.props)
+    if (!text) continue
+    const own = bindings.filter((b) => b.fromId === arrow.id)
+    const startB = own.find((b) => b.props?.terminal === 'start')
+    const endB = own.find((b) => b.props?.terminal === 'end')
+    if (!startB || !endB) continue
+    const s = byId.get(startB.toId), e = byId.get(endB.toId)
+    if (!s || !e) continue
+    if (s.props?.w == null || s.props?.h == null || e.props?.w == null || e.props?.h == null) continue
+    const sx = s.x + s.props.w / 2, sy = s.y + s.props.h / 2
+    const ex = e.x + e.props.w / 2, ey = e.y + e.props.h / 2
+    const lines = text.split('\n')
+    const labelW = Math.max(...lines.map((l) => l.length)) * 11 + 16
+    const labelH = lines.length * 24 + 8
+    let bestT = 0.5, bestArea = Infinity
+    for (const t of [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85]) {
+      const cx = sx + (ex - sx) * t, cy = sy + (ey - sy) * t
+      const area = overlapArea(cx - labelW / 2, cy - labelH / 2, labelW, labelH)
+      if (area < bestArea) { bestArea = area; bestT = t }
+    }
+    const t = Math.max(0.05, Math.min(0.95, bestT))
+    if (Math.abs(t - (arrow.props?.labelPosition ?? 0.5)) > 0.001) {
+      store.put({ ...arrow, props: { ...arrow.props, labelPosition: t } })
+    }
+  }
 }
 
 // resolve the ?board= id, requiring it to exist for mutation routes
@@ -217,6 +304,7 @@ const server = http.createServer(async (req, res) => {
           if (b.field != null) props.fields.push(String(b.field))
           if (b.method != null) props.methods.push(String(b.method))
           props.h = umlHeight(props.fields, props.methods)
+          props.w = umlWidth(props.name, props.fields, props.methods)
           store.put({ ...rec, props })
           out = rec.id
         })
@@ -233,29 +321,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { id: arrow.id })
       }
       if (p === '/update') {
-        checkEnum('color', b.color, COLORS); checkEnum('fill', b.fill, FILLS)
         let updated = null
-        await room.updateStore((store) => {
-          const rec = store.get(b.id)
-          if (!rec) throw new Error(`shape ${b.id} not found`)
-          const next = { ...rec, props: { ...rec.props } }
-          if (b.x != null) next.x = b.x
-          if (b.y != null) next.y = b.y
-          if (b.w != null && 'w' in next.props) next.props.w = b.w
-          if (b.h != null && 'h' in next.props) next.props.h = b.h
-          if (b.color != null && 'color' in next.props) next.props.color = b.color
-          if (b.fill != null && 'fill' in next.props) next.props.fill = b.fill
-          if (b.text != null && 'richText' in next.props) next.props.richText = richText(b.text)
-          // uml-specific props
-          if (b.name != null && 'name' in next.props) next.props.name = String(b.name)
-          if (Array.isArray(b.fields) && 'fields' in next.props) next.props.fields = b.fields.map(String)
-          if (Array.isArray(b.methods) && 'methods' in next.props) next.props.methods = b.methods.map(String)
-          if (rec.type === 'uml' && (b.fields != null || b.methods != null)) {
-            next.props.h = umlHeight(next.props.fields, next.props.methods)
-          }
-          store.put(next)
-          updated = next.id
-        })
+        await room.updateStore((store) => { updated = applyUpdate(store, b) })
         return json(res, 200, { id: updated })
       }
       if (p === '/delete') {
@@ -275,12 +342,68 @@ const server = http.createServer(async (req, res) => {
         })
         return json(res, 200, { ok: true })
       }
+
+      // Apply many ops in ONE transaction. Create-ops may set a "ref" that later
+      // ops reference in place of an id (build + connect in a single call).
+      if (p === '/batch') {
+        const ops = Array.isArray(b.ops) ? b.ops : []
+        const refs = {}
+        await room.updateStore((store) => {
+          let idx = nextIndex(store.getAll().filter((r) => r.typeName === 'shape').map((r) => r.index))
+          const takeIdx = () => { const cur = idx; idx = getIndexAbove(idx); return cur }
+          const rid = (x) => (x != null && refs[x] != null ? refs[x] : x)
+          for (const op of ops) {
+            const k = op.op
+            if (k === 'node') {
+              checkEnum('color', op.color, COLORS); checkEnum('fill', op.fill, FILLS); checkEnum('shape', op.shape, GEO); checkEnum('size', op.size, SIZES)
+              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() })
+              store.put(rec); if (op.ref) refs[op.ref] = rec.id
+            } else if (k === 'text') {
+              checkEnum('color', op.color, COLORS); checkEnum('size', op.size, SIZES)
+              const rec = buildText({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, color: op.color, size: op.size, index: takeIdx() })
+              store.put(rec); if (op.ref) refs[op.ref] = rec.id
+            } else if (k === 'note') {
+              checkEnum('color', op.color, COLORS)
+              const rec = buildNote({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, color: op.color, index: takeIdx() })
+              store.put(rec); if (op.ref) refs[op.ref] = rec.id
+            } else if (k === 'uml') {
+              checkEnum('color', op.color, COLORS)
+              const rec = buildUml({ name: op.name, fields: op.fields || [], methods: op.methods || [], x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() })
+              store.put(rec); if (op.ref) refs[op.ref] = rec.id
+            } else if (k === 'connect') {
+              checkEnum('color', op.color, COLORS)
+              const from = rid(op.from ?? op.fromId), to = rid(op.to ?? op.toId)
+              if (!store.get(from) || !store.get(to)) throw new Error(`connect: from/to not found (${from} -> ${to})`)
+              const arrow = buildArrow({ text: op.text, color: op.color, dash: op.dashed ? 'dashed' : 'draw', index: takeIdx() })
+              store.put(arrow)
+              store.put(buildArrowBinding({ arrowId: arrow.id, shapeId: from, terminal: 'start' }))
+              store.put(buildArrowBinding({ arrowId: arrow.id, shapeId: to, terminal: 'end' }))
+              if (op.ref) refs[op.ref] = arrow.id
+            } else if (k === 'update' || k === 'move') {
+              applyUpdate(store, { ...op, id: rid(op.id) })
+            } else if (k === 'delete') {
+              const ids = (Array.isArray(op.ids) ? op.ids : [op.id]).map(rid)
+              const idSet = new Set(ids)
+              for (const r of store.getAll()) if (r.typeName === 'binding' && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id)
+              for (const id of ids) store.delete(id)
+            } else {
+              throw new Error(`unknown op "${k}" (use node|text|note|uml|connect|update|move|delete)`)
+            }
+          }
+          reflowArrowLabels(store)
+        })
+        return json(res, 200, { refs, count: ops.length })
+      }
       if (p === '/mutate') {
         await room.updateStore((store) => {
           for (const rec of b.puts || []) store.put(rec)
           for (const d of b.deletes || []) store.delete(d)
         })
         return json(res, 200, { ok: true, ...summarize(room) })
+      }
+      if (p === '/reflow-labels') {
+        await room.updateStore((store) => reflowArrowLabels(store))
+        return json(res, 200, { ok: true })
       }
     }
 
