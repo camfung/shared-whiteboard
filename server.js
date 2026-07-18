@@ -63,30 +63,150 @@ function extractText(props) {
   return rt.content.map((p) => walk(p.content)).join('\n').trim() || undefined
 }
 
+// Flatten one shape record to the compact object the read API returns.
+function mapShape(r) {
+  const s = {
+    id: r.id, type: r.type, geo: r.props?.geo,
+    x: Math.round(r.x), y: Math.round(r.y),
+    w: r.props?.w, h: r.props?.h, color: r.props?.color,
+    text: extractText(r.props),
+  }
+  if (r.type === 'uml') {
+    s.name = r.props?.name
+    s.fields = r.props?.fields
+    s.methods = r.props?.methods
+    delete s.text
+  }
+  return s
+}
+// arrowId -> {start: shapeId, end: shapeId} over every binding in the room.
+function arrowLinkMap(recs) {
+  const m = {}
+  for (const b of recs) if (b.typeName === 'binding') (m[b.fromId] ??= {})[b.props?.terminal] = b.toId
+  return m
+}
+function attachLinks(shapes, linkMap) {
+  for (const s of shapes) if (s.type === 'arrow' && linkMap[s.id]) s.link = linkMap[s.id]
+  return shapes
+}
+// Searchable text of a shape (box/note/text body, or a uml's name + members).
+function haystack(s) {
+  return (s.type === 'uml'
+    ? [s.name, ...(s.fields || []), ...(s.methods || [])].join(' ')
+    : s.text || '').toLowerCase()
+}
+// Build a predicate from the filter query ({ids, type, color, text}).
+function shapeFilter({ ids, type, color, text } = {}) {
+  const idSet = ids && ids.length ? new Set(ids) : null
+  const needle = text != null && text !== '' ? String(text).toLowerCase() : null
+  return (s) => {
+    if (idSet && !idSet.has(s.id)) return false
+    if (type && s.type !== type) return false
+    if (color && s.color !== color) return false
+    if (needle != null && !haystack(s).includes(needle)) return false
+    return true
+  }
+}
+function truncate(str, n) {
+  if (str == null) return undefined
+  return str.length > n ? `${str.slice(0, n - 1)}…` : str
+}
+// Compact one-liner for the index read (list_shapes): id + type + label.
+function indexShape(s) {
+  const o = { id: s.id, type: s.type, label: truncate(s.type === 'uml' ? s.name : s.text, 60) }
+  if (s.link) o.link = s.link
+  return o
+}
+// The room's logical clock. tldraw exposes it as documentClock (older
+// snapshots used `clock`); per-record lastChangedClock counts on the same axis.
+function clockOf(snap) {
+  return snap.documentClock ?? snap.clock ?? 0
+}
+// Parse read-query params shared by /board, /shapes, /neighbors.
+function parseQuery(url) {
+  const sp = url.searchParams
+  const q = {}
+  for (const k of ['type', 'color', 'text', 'fields']) { const v = sp.get(k); if (v) q[k] = v }
+  const ids = sp.get('ids'); if (ids) q.ids = ids.split(',').map((s) => s.trim()).filter(Boolean)
+  const since = sp.get('since'); if (since != null && since !== '' && !Number.isNaN(Number(since))) q.since = Number(since)
+  return q
+}
+
+// The board read. No `since`: the whole board (optionally filtered). With
+// `since`: only shapes whose lastChangedClock > since plus ids deleted since,
+// so a caller can poll the human's edits cheaply. Always returns the current
+// clock — keep it and pass it back as `since` next time.
+function boardView(room, q = {}) {
+  const snap = room.getCurrentSnapshot()
+  const clock = clockOf(snap)
+  const allRecs = snap.documents.map((d) => d.state)
+  const linkMap = arrowLinkMap(allRecs)
+  const filter = shapeFilter(q)
+
+  if (q.since != null) {
+    const shapes = attachLinks(
+      snap.documents
+        .filter((d) => (d.lastChangedClock ?? 0) > q.since)
+        .map((d) => d.state)
+        .filter((r) => r.typeName === 'shape')
+        .map(mapShape)
+        .filter(filter),
+      linkMap,
+    )
+    const deleted = Object.entries(snap.tombstones || {})
+      .filter(([id, c]) => c > q.since && String(id).startsWith('shape:'))
+      .map(([id]) => id)
+    return { since: q.since, clock, shapes, deleted, counts: { shapes: shapes.length, deleted: deleted.length } }
+  }
+
+  const shapes = attachLinks(allRecs.filter((r) => r.typeName === 'shape').map(mapShape).filter(filter), linkMap)
+  const bindings = allRecs.filter((r) => r.typeName === 'binding')
+  return { shapes, clock, counts: { shapes: shapes.length, bindings: bindings.length } }
+}
 function summarize(room) {
-  const recs = records(room)
-  const shapes = recs
-    .filter((r) => r.typeName === 'shape')
-    .map((r) => {
-      const s = {
-        id: r.id, type: r.type, geo: r.props?.geo,
-        x: Math.round(r.x), y: Math.round(r.y),
-        w: r.props?.w, h: r.props?.h, color: r.props?.color,
-        text: extractText(r.props),
-      }
-      if (r.type === 'uml') {
-        s.name = r.props?.name
-        s.fields = r.props?.fields
-        s.methods = r.props?.methods
-        delete s.text
-      }
-      return s
-    })
-  const bindings = recs.filter((r) => r.typeName === 'binding')
-  const arrowLinks = {}
-  for (const b of bindings) (arrowLinks[b.fromId] ??= {})[b.props?.terminal] = b.toId
-  for (const s of shapes) if (s.type === 'arrow' && arrowLinks[s.id]) s.link = arrowLinks[s.id]
-  return { shapes, counts: { shapes: shapes.length, bindings: bindings.length } }
+  return boardView(room)
+}
+
+// Query shapes for /shapes: fields=index -> compact one-liners, else full.
+function queryShapes(room, q = {}) {
+  const snap = room.getCurrentSnapshot()
+  const allRecs = snap.documents.map((d) => d.state)
+  const linkMap = arrowLinkMap(allRecs)
+  const full = attachLinks(allRecs.filter((r) => r.typeName === 'shape').map(mapShape).filter(shapeFilter(q)), linkMap)
+  const shapes = q.fields === 'index' ? full.map(indexShape) : full
+  return { shapes, clock: clockOf(snap), counts: { shapes: shapes.length } }
+}
+
+// Graph neighborhood: seed shapes + everything arrow-linked to them out to
+// `hops` links, with the connecting arrows, full detail.
+function neighborsView(room, seedIds, hops) {
+  const snap = room.getCurrentSnapshot()
+  const allRecs = snap.documents.map((d) => d.state)
+  const linkMap = arrowLinkMap(allRecs)
+  const shapeIds = new Set(allRecs.filter((r) => r.typeName === 'shape').map((r) => r.id))
+  const adj = new Map() // nodeId -> [{ node, arrow }]
+  const link = (a, b, arrow) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push({ node: b, arrow }) }
+  for (const [arrow, ends] of Object.entries(linkMap)) {
+    if (!ends.start || !ends.end) continue
+    link(ends.start, ends.end, arrow)
+    link(ends.end, ends.start, arrow)
+  }
+  const seeds = seedIds.filter((id) => shapeIds.has(id))
+  const missing = seedIds.filter((id) => !shapeIds.has(id))
+  const visited = new Set(seeds)
+  const arrows = new Set()
+  let frontier = [...seeds]
+  for (let h = 0; h < Math.max(1, hops); h++) {
+    const next = []
+    for (const n of frontier) for (const e of adj.get(n) || []) {
+      arrows.add(e.arrow)
+      if (!visited.has(e.node)) { visited.add(e.node); next.push(e.node) }
+    }
+    frontier = next
+  }
+  const want = new Set([...visited, ...arrows])
+  const shapes = attachLinks(allRecs.filter((r) => r.typeName === 'shape' && want.has(r.id)).map(mapShape), linkMap)
+  return { seeds, ...(missing.length ? { missing } : {}), hops: Math.max(1, hops), clock: clockOf(snap), shapes, counts: { shapes: shapes.length } }
 }
 
 // Deterministic overlap metric for a board. Containers are treated as FRAMES,
@@ -402,7 +522,18 @@ const server = http.createServer(async (req, res) => {
     if (M === 'GET' && p === '/snapshot') return json(res, 200, roomFor(url).getCurrentSnapshot())
     if (M === 'GET' && p === '/board') {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
-      return json(res, 200, { board: boardId(url), ...summarize(roomFor(url)) })
+      return json(res, 200, { board: boardId(url), ...boardView(roomFor(url), parseQuery(url)) })
+    }
+    if (M === 'GET' && p === '/shapes') {
+      if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
+      return json(res, 200, { board: boardId(url), ...queryShapes(roomFor(url), parseQuery(url)) })
+    }
+    if (M === 'GET' && p === '/neighbors') {
+      if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
+      const ids = (url.searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean)
+      if (!ids.length) return json(res, 400, { error: 'neighbors needs ids' })
+      const hops = Number(url.searchParams.get('hops')) || 1
+      return json(res, 200, { board: boardId(url), ...neighborsView(roomFor(url), ids, hops) })
     }
     if (M === 'GET' && p === '/overlap') {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })

@@ -97,8 +97,14 @@ Board management:
 - `create_board {name}` — create + open + make active.
 - `rename_board {name, id?}` / `delete_board {name}`.
 
-Editing the active board (call `open_board` or `create_board` first):
-- `get_board` — all shapes (id, type, x/y, w/h, color, text; uml shapes also give name/fields/methods) + arrow links.
+Reading the active board (call `open_board` or `create_board` first):
+- `get_board {since?, type?, color?, text?, ids?}` — the whole board (shapes with id, type, x/y, w/h, color, text; uml shapes also give name/fields/methods) + arrow links + the board `clock`. Filters narrow it; `since=<clock>` returns only what changed. See *Reading big boards efficiently* below.
+- `list_shapes {type?, color?, text?}` — compact index: one `{id, type, label}` line per shape (+ arrow links). A cheap map of a large board.
+- `get_shapes {ids?, type?, color?, text?}` — full detail for specific shapes (by id, or by filter).
+- `get_neighbors {ids, hops?}` — a shape plus everything arrow-linked to it, out to `hops` links (default 1), with the connecting arrows.
+- `check_overlap` — layout-quality metrics (overlap ratio, worst offenders); decide/verify a re-layout.
+
+Editing the active board:
 - `create_node {text,x,y,w?,h?,shape?,color?,fill?}` → id.
 - `create_text {text,x,y,color?,size?}` → id.
 - `create_note {text,x,y,color?}` → id.
@@ -122,9 +128,18 @@ Reusable templates (save a block once, stamp copies anywhere):
 - **fills**: none, semi, solid, pattern
 - Invalid enum → error (it would otherwise crash the browser's validator).
 
+### Reading big boards efficiently
+On a large board, don't re-read the whole thing every time:
+- **Map first, then drill.** `list_shapes` gives a cheap index; pull full detail for only the ids you need with `get_shapes`, or expand outward from a node with `get_neighbors`.
+- **Filter server-side.** `type` / `color` / `text` (substring, case-insensitive) / `ids` on `get_board`, `list_shapes`, and `get_shapes` narrow the result before it's sent.
+- **Poll changes with the clock.** Every read returns a `clock`. Pass it back as `get_board {since: clock}` to get only shapes changed since (plus `deleted` ids from tombstones) — the cheap way to see the human's latest edits instead of re-reading the board. The response carries the new `clock`; keep it for the next poll.
+
 ## HTTP API (what the MCP server calls)
 - `GET /boards` · `POST /boards {name}` · `POST /boards/rename {id,name}` · `POST /boards/delete {id}` · `GET /boards/find?q=`
-- `GET /board?board=<id>` — semantic summary · `GET /snapshot?board=<id>` — raw
+- `GET /board?board=<id>` — semantic summary + `clock`. Optional `since=<clock>` (delta: changed shapes + `deleted` ids), and `type` / `color` / `text` / `ids` filters.
+- `GET /shapes?board=<id>&fields=index|full` — `index` = compact `{id,type,label}`, `full` = full detail; same `type`/`color`/`text`/`ids` filters.
+- `GET /neighbors?board=<id>&ids=a,b&hops=1` — graph neighborhood of the given shape ids.
+- `GET /snapshot?board=<id>` — raw tldraw snapshot.
 - `POST /node|/text|/note|/connect|/update|/delete|/clear?board=<id>`
 - `POST /mutate?board=<id>` — low-level `{puts, deletes}` escape hatch
 

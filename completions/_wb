@@ -1,0 +1,170 @@
+#compdef wb
+# zsh completion for the Shared Whiteboard CLI (wb).
+#
+# Commands are grouped: `wb <group> <command> [--flags]`
+#   groups: board | read | create | edit | template
+#
+# Install (any one):
+#   1. Symlink into an fpath dir, then rebuild completion cache:
+#        ln -s "<repo>/completions/_wb" ~/.zsh/completions/_wb
+#        # ensure ~/.zshrc has:  fpath=(~/.zsh/completions $fpath); autoload -Uz compinit; compinit
+#   2. Or source the loader:  source "<repo>/completions/wb-completion.zsh"
+
+# ---- shared value pools ----
+_wb_colors=(black grey light-violet violet blue light-blue yellow orange
+            green light-green light-red red)
+_wb_shapes=(rectangle ellipse diamond triangle hexagon cloud star oval
+            pentagon octagon rhombus trapezoid x-box check-box heart)
+_wb_fills=(none semi solid pattern)
+_wb_sizes=(s m l xl)
+_wb_types=(geo uml note text arrow)
+
+# dynamic: live board names from the backend (best-effort; empty if down)
+_wb_boards() {
+  local -a names
+  # compadd (not _describe) so board names containing ':' aren't split
+  names=(${(f)"$(wb board list 2>/dev/null | grep '"name"' | sed -E 's/.*"name": *"(.*)",?/\1/')"})
+  compadd -Q -a names
+}
+
+_wb() {
+  local curcontext="$curcontext" state line
+  typeset -A opt_args
+
+  local -a groups
+  groups=(
+    'board:manage boards'
+    'read:read the active board'
+    'create:create shapes'
+    'edit:edit the active board'
+    'template:reusable templates'
+    'help:show help'
+  )
+
+  _arguments -C \
+    '1: :->ns' \
+    '2: :->sub' \
+    '*::arg:->args'
+
+  # every command can take --board <name|id>
+  local -a common
+  common=('--board[target a board for this call]:board:_wb_boards')
+
+  case $state in
+    ns)
+      _describe -t groups 'wb group' groups
+      ;;
+
+    sub)
+      local -a subs
+      case ${line[1]} in
+        board)
+          subs=('list:all boards' 'open:open + set active' 'create:create + set active'
+                'rename:rename a board' 'delete:delete a board' 'current:show active board') ;;
+        read)
+          subs=('board:full board, or delta since a clock' 'list:compact index (id/type/label)'
+                'shapes:full detail for a subset' 'neighbors:a shape + its arrow-linked neighbors'
+                'overlap:layout-quality check') ;;
+        create)
+          subs=('node:labeled box/shape' 'text:free-standing text' 'note:sticky note' 'uml:UML class block') ;;
+        edit)
+          subs=('node:update a shape' 'uml:update a UML block' 'field:append a UML field'
+                'method:append a UML method' 'connect:draw an arrow' 'move:move a container + contents'
+                'space:tidy spacing' 'delete:delete shapes' 'clear:delete everything'
+                'reflow:reposition arrow labels' 'ops:many edits in one call') ;;
+        template)
+          subs=('list:saved templates' 'save:save shapes as a template'
+                'stamp:stamp a template' 'delete:delete a template') ;;
+        *) return ;;
+      esac
+      _describe -t subcommands "wb ${line[1]} command" subs
+      ;;
+
+    args)
+      case "${line[1]} ${line[2]}" in
+        'board open'|'board delete')
+          _arguments $common '--name[board name or id]:board:_wb_boards' ;;
+        'board create')
+          _arguments '--name[new board name]:name:' ;;
+        'board rename')
+          _arguments '--name[new name]:name:' '--id[board id]:board:_wb_boards' ;;
+
+        'read board')
+          _arguments $common \
+            '--since[clock from a previous read; return only changes]:clock:' \
+            '--type[shape type]:type:(${_wb_types})' \
+            '--color[color]:color:(${_wb_colors})' \
+            '--text[label contains]:text:' \
+            '--ids[JSON array of ids]:ids:' ;;
+        'read list')
+          _arguments $common \
+            '--type[shape type]:type:(${_wb_types})' \
+            '--color[color]:color:(${_wb_colors})' \
+            '--text[label contains]:text:' ;;
+        'read shapes')
+          _arguments $common \
+            '--ids[JSON array of ids]:ids:' \
+            '--type[shape type]:type:(${_wb_types})' \
+            '--color[color]:color:(${_wb_colors})' \
+            '--text[label contains]:text:' ;;
+        'read neighbors')
+          _arguments $common \
+            '--ids[JSON array of seed ids]:ids:' \
+            '--hops[arrow-links to expand (default 1)]:hops:' ;;
+
+        'create node')
+          _arguments $common \
+            '--text[label]:text:' '--x[x]:x:' '--y[y]:y:' '--w[width]:w:' '--h[height]:h:' \
+            '--shape[geo shape]:shape:(${_wb_shapes})' \
+            '--color[color]:color:(${_wb_colors})' \
+            '--fill[fill]:fill:(${_wb_fills})' ;;
+        'create text')
+          _arguments $common '--text[text]:text:' '--x[x]:x:' '--y[y]:y:' \
+            '--color[color]:color:(${_wb_colors})' '--size[size]:size:(${_wb_sizes})' ;;
+        'create note')
+          _arguments $common '--text[text]:text:' '--x[x]:x:' '--y[y]:y:' \
+            '--color[color]:color:(${_wb_colors})' ;;
+        'create uml')
+          _arguments $common '--name[class name]:name:' '--x[x]:x:' '--y[y]:y:' \
+            '--fields[JSON array]:fields:' '--methods[JSON array]:methods:' \
+            '--color[color]:color:(${_wb_colors})' ;;
+
+        'edit node')
+          _arguments $common '--id[shape id]:id:' '--text[text]:text:' \
+            '--x[x]:x:' '--y[y]:y:' '--w[width]:w:' '--h[height]:h:' \
+            '--color[color]:color:(${_wb_colors})' '--fill[fill]:fill:(${_wb_fills})' ;;
+        'edit uml')
+          _arguments $common '--id[uml id]:id:' '--name[name]:name:' \
+            '--fields[JSON array]:fields:' '--methods[JSON array]:methods:' \
+            '--color[color]:color:(${_wb_colors})' '--x[x]:x:' '--y[y]:y:' '--w[width]:w:' ;;
+        'edit field')
+          _arguments $common '--id[uml id]:id:' '--field[field row]:field:' ;;
+        'edit method')
+          _arguments $common '--id[uml id]:id:' '--method[method row]:method:' ;;
+        'edit connect')
+          _arguments $common '--fromId[source id]:id:' '--toId[target id]:id:' \
+            '--text[label]:text:' '--color[color]:color:(${_wb_colors})' '--dashed[dashed]:dashed:(true false)' ;;
+        'edit move')
+          _arguments $common '--id[container id]:id:' \
+            '--x[abs x]:x:' '--y[abs y]:y:' '--dx[delta x]:dx:' '--dy[delta y]:dy:' ;;
+        'edit space')
+          _arguments $common '--gap[min px gap]:gap:' '--id[container id (scope to it)]:id:' ;;
+        'edit delete')
+          _arguments $common '--ids[JSON array of ids]:ids:' ;;
+        'edit ops')
+          _arguments $common '--ops[JSON array of ops]:ops:' ;;
+
+        'template save')
+          _arguments $common '--name[template name]:name:' '--ids[JSON array of ids]:ids:' ;;
+        'template stamp')
+          _arguments $common '--name[template name]:name:' '--x[x]:x:' '--y[y]:y:' ;;
+        'template delete')
+          _arguments '--name[template name]:name:' ;;
+
+        *) _arguments $common ;;  # board list/current, read overlap, edit clear/reflow, template list
+      esac
+      ;;
+  esac
+}
+
+_wb "$@"

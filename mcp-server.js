@@ -42,6 +42,20 @@ async function bapi(path, method, body) {
   return api(`${path}${sep}board=${encodeURIComponent(id)}`, method, body)
 }
 
+// Build a read query-string from tool args (board= is appended later by bapi).
+function qs(a = {}) {
+  const p = new URLSearchParams()
+  if (a.since != null) p.set('since', String(a.since))
+  if (a.type) p.set('type', a.type)
+  if (a.color) p.set('color', a.color)
+  if (a.text) p.set('text', a.text)
+  if (Array.isArray(a.ids) && a.ids.length) p.set('ids', a.ids.join(','))
+  if (a.hops != null) p.set('hops', String(a.hops))
+  if (a.fields) p.set('fields', a.fields)
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
 const ok = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj) }] })
 const wrap = (fn) => async (args) => {
   try { return ok(await fn(args || {})) } catch (e) { return { isError: true, content: [{ type: 'text', text: String(e.message || e) }] } }
@@ -105,9 +119,38 @@ server.registerTool('delete_board', {
 
 // ---- document (act on the active board) ----
 server.registerTool('get_board', {
-  description: 'Read the active board: every shape (id, type, position, size, color, text) and arrow links. Call after open_board, and again to see edits the human just made.',
-  inputSchema: {},
-}, wrap(() => bapi('/board')))
+  description: 'Read the active board: every shape (id, type, position, size, color, text) and arrow links, plus the board "clock". To poll the human\'s edits cheaply, keep the clock and pass it back as `since` — you then get ONLY shapes changed after it plus ids deleted since (not the whole board). Narrow with type/color/text/ids. On a big board prefer list_shapes (a cheap index) then get_shapes/get_neighbors.',
+  inputSchema: {
+    since: z.number().optional().describe('a clock from a previous read; returns only shapes changed after it + deleted ids'),
+    type: z.string().optional().describe('only this type: geo | uml | note | text | arrow'),
+    color: z.string().optional().describe('only shapes of this color'),
+    text: z.string().optional().describe('only shapes whose text/label contains this (case-insensitive)'),
+    ids: z.array(z.string()).optional().describe('only these shape ids'),
+  },
+}, wrap((a) => bapi(`/board${qs(a)}`)))
+
+server.registerTool('list_shapes', {
+  description: 'Compact INDEX of the active board — one line per shape { id, type, label } (label = text or UML name, truncated) plus arrow links. Much cheaper than get_board on a large board: use it to map what exists, then pull full detail on just the ids you need with get_shapes or get_neighbors. Filter with type/color/text.',
+  inputSchema: {
+    type: z.string().optional(), color: z.string().optional(), text: z.string().optional(),
+  },
+}, wrap((a) => bapi(`/shapes${qs({ ...a, fields: 'index' })}`)))
+
+server.registerTool('get_shapes', {
+  description: 'Full detail (id, type, position, size, color, text, links) for specific shapes on the active board. Pass ids (e.g. from list_shapes), or a type/color/text filter to pull every match. Use to zoom into a few shapes without reading the whole board.',
+  inputSchema: {
+    ids: z.array(z.string()).optional().describe('shape ids to fetch'),
+    type: z.string().optional(), color: z.string().optional(), text: z.string().optional(),
+  },
+}, wrap((a) => bapi(`/shapes${qs({ ...a, fields: 'full' })}`)))
+
+server.registerTool('get_neighbors', {
+  description: 'Graph neighborhood of one or more shapes: the seeds plus everything connected to them by arrows out to `hops` links (default 1), with the connecting arrows, full detail. Explore outward from a node without loading the whole board.',
+  inputSchema: {
+    ids: z.array(z.string()).describe('seed shape ids'),
+    hops: z.number().optional().describe('arrow-links to expand outward (default 1)'),
+  },
+}, wrap((a) => bapi(`/neighbors${qs(a)}`)))
 
 server.registerTool('check_overlap', {
   description: 'Deterministic layout-quality check for the active board. Returns overlapRatio (bad-overlap area ÷ total node area — a scalar; ~0 = clean), overlappingPairs, verdict (clean|minor|bad), worstPair, and topOffenders (shape ids with the most overlap). Container↔child nesting is intentional and NOT counted. Use it to decide whether to rearrange (move/space/reflow) and to verify the result afterward.',

@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Backend sync server + MCP server for the shared tldraw whiteboard",
+  "bin": {
+    "wb": "wb-cli.js"
+  },
   "scripts": {
     "server": "node server.js",
-    "mcp": "node mcp-server.js"
+    "mcp": "node mcp-server.js",
+    "cli": "node wb-cli.js"
   },
   "dependencies": {
     "@tldraw/sync-core": "5.2.5",
