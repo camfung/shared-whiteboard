@@ -30,7 +30,7 @@ const HOST = process.env.WB_HOST || '127.0.0.1'
 // Serve the built web UI (web/dist) when present, so an always-on deploy needs
 // only this one process. In dev, run Vite on :5173 instead (dist won't exist).
 const DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), 'web', 'dist')
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.map': 'application/json' }
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.map': 'application/json' }
 function serveStatic(res, pathname) {
   if (!fs.existsSync(DIST)) return false
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')

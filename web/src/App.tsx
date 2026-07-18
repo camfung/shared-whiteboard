@@ -308,7 +308,7 @@ export default function App() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={bar}>
+      <div className="wb-chrome" style={bar}>
         <strong style={{ letterSpacing: 0.3 }}>▦ whiteboard</strong>
         <span style={{ opacity: 0.6 }}>board:</span>
         <select value={current ?? ''} onChange={(e) => select(e.target.value)} style={{ ...btn, minWidth: 180 }}>
@@ -319,6 +319,7 @@ export default function App() {
         </select>
         {current && (
           <span
+            className="wb-chip"
             style={chip}
             onClick={copyId}
             title="Copy this board's id"

@@ -6,7 +6,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=WB_PORT=5858
-Environment=WB_HOST=127.0.0.1
+# Bind all interfaces so LAN devices (e.g. an iPad on the desk) can reach the
+# board at http://<this-machine-ip>:5858. NOTE: no auth — every device on the
+# LAN can read/edit. For a tighter blast radius set this to a specific interface
+# IP (e.g. a Tailscale address) instead of 0.0.0.0.
+Environment=WB_HOST=0.0.0.0
 WorkingDirectory=%h/ClaudeChats/Shared Whiteboard
 ExecStart=/usr/bin/env node "%h/ClaudeChats/Shared Whiteboard/server.js"
 Restart=on-failure

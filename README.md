@@ -79,6 +79,29 @@ systemctl --user daemon-reload
 systemctl --user enable --now whiteboard.service
 # UI + API now live at http://127.0.0.1:5858
 ```
+The bundled `whiteboard.service` binds `WB_HOST=0.0.0.0`, so the board is
+reachable from other devices on the LAN (see *On an iPad* below).
+
+### On an iPad (installs as a full-screen app)
+The UI is a PWA — added to the Home Screen it launches chromeless (no address
+bar, no tabs), locks out browser page-zoom so pinch drives the canvas, and kills
+the rubber-band bounce. It feels like a native app.
+
+1. **Serve on the LAN.** The always-on service already binds `0.0.0.0`. If you
+   run it by hand instead, pass the bind explicitly:
+   ```bash
+   cd web && npm run build
+   WB_HOST=0.0.0.0 node server.js      # UI + API on every interface, port 5858
+   ```
+   > No auth — anyone on the LAN can read/edit. To scope it to your Tailscale
+   > net, use that interface's IP instead of `0.0.0.0`.
+2. **Open it on the iPad.** In Safari go to `http://<this-machine-ip>:5858`
+   (e.g. `http://10.0.2.52:5858`). `hostname -I` prints the machine's IPs.
+3. **Install.** Share button → **Add to Home Screen** → *Add*. Launch it from the
+   new "Whiteboard" icon — it opens full-screen.
+
+Keep the iPad and host on the same network. The page and its WebSocket both talk
+to `<the-host-you-opened>:5858`, so LAN over plain `http`/`ws` just works.
 
 ## Claude / MCP
 
@@ -147,4 +170,5 @@ On a large board, don't re-read the whole thing every time:
 - Coordinates are tldraw page pixels; `create_*` place shapes at `x,y` (top-left).
 - Conflict model is last-write-wins per record — fine for a human + Claude taking
   turns, not CRDT-grade for two people typing in the same text field at once.
-- Backend binds `127.0.0.1`. For LAN, set `WB_HOST=0.0.0.0` and open the host's IP.
+- Backend host defaults to `127.0.0.1` (the `server.js` default); the bundled
+  service overrides it to `0.0.0.0` for LAN/iPad use. Override with `WB_HOST`.
