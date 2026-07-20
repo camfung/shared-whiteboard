@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Whiteboard Control
+Comment=Start, stop, or free the Shared Whiteboard server
+Exec=__REPO_DIR__/whiteboard-ctl
+Icon=__REPO_DIR__/web/dist/icon.svg
+Terminal=false
+Categories=Graphics;
+Keywords=whiteboard;control;stop;kill;server;resources;
+StartupNotify=false

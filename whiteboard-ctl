@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Shared Whiteboard control panel. A tiny zenity GUI to open the board or to
+# start / stop / restart the app server — so you can free its memory when you
+# need to reclaim resources. Also usable headless: `whiteboard-ctl stop`.
+SVC=whiteboard-app.service
+URL="${WB_APP_URL:-http://localhost:5858}"
+
+svc() { systemctl --user "$@" "$SVC"; }
+state() { systemctl --user is-active "$SVC" 2>/dev/null || echo unknown; }
+
+# Headless subcommands: whiteboard-ctl {open|start|stop|restart|status}
+case "${1:-}" in
+  open)    exec open-whiteboard ;;
+  start)   exec svc start ;;
+  stop)    exec svc stop ;;
+  restart) exec svc restart ;;
+  status)  exec systemctl --user status "$SVC" --no-pager ;;
+esac
+
+command -v zenity >/dev/null 2>&1 || { echo "zenity not installed; use: whiteboard-ctl {open|start|stop|restart|status}"; exit 1; }
+
+memh() {
+  local m; m="$(systemctl --user show "$SVC" -p MemoryCurrent --value 2>/dev/null)"
+  if [[ "$m" =~ ^[0-9]+$ ]] && [ "$m" -gt 0 ]; then numfmt --to=iec "$m" 2>/dev/null; else echo "—"; fi
+}
+
+while true; do
+  choice=$(zenity --list --title="Whiteboard Control" \
+    --text="Status: <b>$(state)</b>    Memory: $(memh)    $URL" \
+    --column=Action --column=Description \
+    Open    "Open the whiteboard in an app window" \
+    Start   "Start the app server" \
+    Stop    "Stop the server (free its memory)" \
+    Restart "Restart the server" \
+    Status  "Show detailed status" \
+    --hide-header --height=340 --width=480 2>/dev/null) || exit 0
+  case "$choice" in
+    Open)    open-whiteboard & disown ;;
+    Start)   svc start 2>/dev/null || true ;;
+    Stop)    svc stop 2>/dev/null || true ;;
+    Restart) svc restart 2>/dev/null || true ;;
+    Status)  systemctl --user status "$SVC" --no-pager 2>&1 \
+               | zenity --text-info --title="Whiteboard status" --width=720 --height=420 2>/dev/null || true ;;
+    *) exit 0 ;;
+  esac
+done

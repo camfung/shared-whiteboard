@@ -288,8 +288,12 @@ function applyUpdate(store, b) {
   if (b.name != null && 'name' in next.props) next.props.name = String(b.name)
   if (Array.isArray(b.fields) && 'fields' in next.props) next.props.fields = b.fields.map(String)
   if (Array.isArray(b.methods) && 'methods' in next.props) next.props.methods = b.methods.map(String)
-  if (rec.type === 'geo' && b.w == null && b.h == null) {
-    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale)
+  if (rec.type === 'geo' && b.h == null) {
+    // h not pinned: keep the effective width (caller's new w, else the box's
+    // current w) and refit height to the text wrapped at that width, so an
+    // in-place text edit never overflows and never explodes the author's layout.
+    const targetW = b.w != null ? b.w : next.props.w
+    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale, targetW)
     next.props.w = fit.w
     next.props.h = fit.h
   }

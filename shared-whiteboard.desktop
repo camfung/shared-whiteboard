@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Shared Whiteboard
+Comment=Collaborative tldraw whiteboard (starts the server if needed)
+Exec=__REPO_DIR__/open-whiteboard
+Icon=__REPO_DIR__/web/dist/icon.svg
+Terminal=false
+Categories=Graphics;
+Keywords=whiteboard;tldraw;diagram;draw;board;
+StartupNotify=false
+StartupWMClass=shared-whiteboard

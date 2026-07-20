@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Open Shared Whiteboard as an app-mode window (native-app feel). Ensures the
+# app server is running first, then points a Chromium-family browser at it with
+# --app so there's no tab/URL chrome. Falls back to Firefox, then xdg-open.
+URL="${WB_APP_URL:-http://localhost:5858}"
+
+systemctl --user start whiteboard-app.service 2>/dev/null || true
+
+# Wait briefly for the server to answer /health so the window doesn't open blank.
+if command -v curl >/dev/null 2>&1; then
+  for _ in $(seq 1 30); do curl -sf "$URL/health" >/dev/null 2>&1 && break; sleep 0.2; done
+else
+  sleep 1
+fi
+
+for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+  if command -v "$b" >/dev/null 2>&1; then
+    exec "$b" --app="$URL" --class=shared-whiteboard
+  fi
+done
+
+if command -v firefox >/dev/null 2>&1; then
+  exec firefox --new-window "$URL"
+fi
+
+exec xdg-open "$URL"

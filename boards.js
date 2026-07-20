@@ -6,13 +6,11 @@
 // Board names live in data/boards.json.
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { TLSocketRoom } from '@tldraw/sync-core'
 import { createTLSchema, defaultShapeSchemas, defaultBindingSchemas } from '@tldraw/tlschema'
 import { umlProps } from './uml-schema.js'
+import { DATA_DIR } from './data-dir.js'
 
-const DIR = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = path.join(DIR, 'data')
 const SNAP_DIR = path.join(DATA_DIR, 'snapshots')
 const INDEX_FILE = path.join(DATA_DIR, 'boards.json')
 

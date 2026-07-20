@@ -7,8 +7,42 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const BASE = process.env.WB_URL || 'http://127.0.0.1:5858'
+const DIR = path.dirname(fileURLToPath(import.meta.url))
+// The backend entry sits beside us: server.cjs in a built plugin bundle, else
+// the server.js source in dev.
+const SERVER_ENTRY = ['server.cjs', 'server.js']
+  .map((f) => path.join(DIR, f))
+  .find((f) => fs.existsSync(f))
+
+// The sync backend (server.js) holds the boards and serves the web UI. When this
+// MCP server runs standalone (e.g. installed as a Claude Code plugin) there may
+// be no backend up yet. Reuse one if it's already healthy, otherwise spawn it as
+// a DETACHED child — never in-process: server.js logs to stdout, which would
+// corrupt this process's stdio JSON-RPC stream. stdio:'ignore' keeps its output
+// off our channel. The child outlives us so a browser stays connected between
+// MCP sessions; the next session reuses it via the health check.
+async function healthy() {
+  try { return (await fetch(`${BASE}/health`)).ok } catch { return false }
+}
+async function ensureBackend() {
+  if (process.env.WB_URL) return // caller pointed us at an external backend; don't manage it
+  if (await healthy()) return
+  if (!SERVER_ENTRY) throw new Error('whiteboard backend entry (server.cjs/server.js) not found next to mcp-server')
+  spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: DIR, stdio: 'ignore', detached: true, env: process.env,
+  }).unref()
+  for (let i = 0; i < 100; i++) {
+    if (await healthy()) return
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`whiteboard backend failed to start on ${BASE}`)
+}
 
 let current = null // { id, name }
 
@@ -301,5 +335,10 @@ server.registerTool('delete_template', {
   inputSchema: { name: z.string() },
 }, wrap((a) => api('/templates/delete', 'POST', a)))
 
-const transport = new StdioServerTransport()
-await server.connect(transport)
+// Wrapped in an async IIFE (not top-level await) so this file bundles to CJS,
+// which the plugin ships. CJS has no top-level await.
+;(async () => {
+  await ensureBackend()
+  const transport = new StdioServerTransport()
+  await server.connect(transport)
+})().catch((e) => { console.error(String(e?.stack || e)); process.exit(1) })

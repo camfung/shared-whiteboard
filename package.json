@@ -10,13 +10,17 @@
   "scripts": {
     "server": "node server.js",
     "mcp": "node mcp-server.js",
-    "cli": "node wb-cli.js"
+    "cli": "node wb-cli.js",
+    "build:plugin": "node scripts/build-plugin.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@tldraw/sync-core": "5.2.5",
     "@tldraw/tlschema": "5.2.5",
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "ws": "8.21.1",
-    "@tldraw/utils": "5.2.5"
+    "@tldraw/utils": "5.2.5",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

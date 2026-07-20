@@ -62,21 +62,40 @@ export function bumpSize(size = 'm') {
   return SIZE_UP[size] || SIZE_UP.m
 }
 
+const GEO_CHAR = 0.62   // Hurmit advance factor; width & wrapping must share it
+const GEO_LINE = 1.4    // line-height factor
+const GEO_PAD_X = 32    // total horizontal label padding
+const GEO_PAD_Y = 24    // total vertical label padding
+
 // Box that fits the text, given the *stored* (already-bumped) size + scale.
-export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale = 1) {
+// When targetW is given, height is sized to the text *wrapped* at that width
+// (the box is pinned wide, so a long single line becomes several visual rows) —
+// otherwise the box grows wide enough that no wrapping happens.
+export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale = 1, targetW = null) {
   const fs = (FONT_SIZES[size] || 24) * (scale || 1)
+  const charW = fs * GEO_CHAR
   const lines = String(text || '').split('\n')
   const maxLen = Math.max(1, ...lines.map((l) => l.length))
   // non-rectangular shapes (ellipse/diamond/…) need extra room for the label
   const roomy = geo === 'rectangle' ? 1 : 1.4
-  const w = Math.round(Math.max(80, maxLen * fs * 0.62 + 32) * roomy)
-  const h = Math.round(Math.max(48, lines.length * fs * 1.4 + 24) * roomy)
+  const w = targetW != null
+    ? Math.max(80, targetW)
+    : Math.round(Math.max(80, maxLen * charW + GEO_PAD_X) * roomy)
+  // rows = wrapped line count at the effective text width (single line if unpinned)
+  let rows = lines.length
+  if (targetW != null) {
+    const avail = Math.max(charW, w / roomy - GEO_PAD_X)
+    const cpl = Math.max(1, Math.floor(avail / charW))
+    rows = lines.reduce((n, l) => n + wrappedLines(l, cpl), 0)
+  }
+  const h = Math.round(Math.max(48, rows * fs * GEO_LINE + GEO_PAD_Y) * roomy)
   return { w, h }
 }
 
 export function buildGeo({ text = '', x = 0, y = 0, w, h, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
   const { size: s, scale } = bumpSize(size)
-  const fit = geoSizeForText(text, s, geo, scale)
+  // pin height to wrapping at the caller's width when w is set but h is not
+  const fit = geoSizeForText(text, s, geo, scale, w != null && h == null ? w : null)
   return baseShape('geo', x, y, index, {
     w: w ?? fit.w, h: h ?? fit.h, geo, dash, growY: 0, url: '', scale,
     color, labelColor: 'black', fill, size: s, font: 'draw',

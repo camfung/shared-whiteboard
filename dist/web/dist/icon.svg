@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Shared Whiteboard app icon: 2x2 "boards" grid in the house sage/cream palette -->
+  <rect width="512" height="512" fill="#f3f4ea"/>
+  <g stroke="#b7bca8" stroke-width="3">
+    <rect x="96"  y="96"  width="140" height="140" rx="24" fill="#aeb695"/>
+    <rect x="276" y="96"  width="140" height="140" rx="24" fill="#c7cdb5"/>
+    <rect x="96"  y="276" width="140" height="140" rx="24" fill="#6b7059"/>
+    <rect x="276" y="276" width="140" height="140" rx="24" fill="#aeb695"/>
+  </g>
+</svg>

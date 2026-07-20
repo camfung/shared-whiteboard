@@ -5,11 +5,10 @@
 // point, and drops them onto a board. Stored in data/templates.json.
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { getIndexAbove } from '@tldraw/utils'
 import { nextIndex } from './shapes.js'
+import { DATA_DIR } from './data-dir.js'
 
-const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data')
 const FILE = path.join(DATA_DIR, 'templates.json')
 fs.mkdirSync(DATA_DIR, { recursive: true })
 

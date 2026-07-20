@@ -5,3 +5,5 @@ web/dist/
 *.log
 data/
 data-backup-*/
+.shipyard/
+.shipyard

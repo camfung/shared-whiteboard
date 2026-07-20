@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whiteboard → iPad app</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📲</text></svg>">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  main { max-width: 60rem; margin: 0 auto; }
+  .lede { color: var(--text-soft); font-size: 1.05rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-block: 1.25rem; }
+  .grid .card { margin: 0; }               /* gap owns the spacing */
+  .card h3 { margin-top: 0; }
+  .why { color: var(--text-soft); }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps > li { counter-increment: step; position: relative; padding: 0.15rem 0 0.15rem 2.4rem; margin-block: 0.9rem; }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.1rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 999px;
+    display: grid; place-items: center; font-weight: 700;
+    background: var(--color-action); color: var(--color-bg);
+  }
+  code.k { white-space: nowrap; }
+  .changes { display: grid; gap: 1rem; margin-block: 1.25rem; }
+  .change { margin: 0; }
+  .change h3 { margin: 0 0 0.5rem; font-size: 1rem; font-family: var(--font-mono, ui-monospace, monospace); word-break: break-word; }
+  .change .row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: 0.5rem 0.75rem; }
+  .change .lbl { color: var(--text-muted); font-weight: 700; }
+  .change p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .change code { white-space: normal; overflow-wrap: anywhere; }  /* long spans wrap, never widen the page */
+  @media (max-width: 460px) {
+    .change .row { grid-template-columns: 1fr; gap: 0.15rem; }
+    .change .lbl { margin-top: 0.4rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Whiteboard → iPad app 📲</h1>
+  <p class="lede">
+    The Shared Whiteboard now installs to the iPad Home Screen and runs
+    full-screen — no address bar, no tabs. The goal was that you can't tell it's
+    the browser. This is what changed and how to set it up.
+  </p>
+
+  <span class="tag">tldraw</span>
+  <span class="tag">PWA</span>
+  <span class="tag">commit 852b248</span>
+
+  <h2>What it does on iPad now</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>🖼️ Full-screen</h3>
+      <p>Add to Home Screen → launches chromeless like a native app. A real app
+      icon (the sage “boards” grid), not a Safari tab.</p>
+    </div>
+    <div class="card">
+      <h3>🤏 Real pinch-zoom</h3>
+      <p>Safari's page-zoom and double-tap-zoom no longer fight the canvas — a
+      pinch zooms the drawing, not the web page.</p>
+    </div>
+    <div class="card">
+      <h3>🚫 No bounce</h3>
+      <p>Rubber-band scroll and pull-to-refresh are gone. The page can't scroll;
+      the canvas owns every gesture.</p>
+    </div>
+    <div class="card">
+      <h3>👆 Finger-sized</h3>
+      <p>The top toolbar's buttons grow to ~44 px on touch and sit clear of the
+      status-bar safe area. tldraw's own UI already adapts.</p>
+    </div>
+  </div>
+
+  <h2>The changes</h2>
+  <p class="why">All in one commit. Each file, and why it was needed.</p>
+
+  <div class="changes">
+    <div class="card change">
+      <h3>web/public/manifest.webmanifest <span class="badge">new</span></h3>
+      <div class="row">
+        <span class="lbl">What</span><p>PWA manifest — <code>display:standalone</code>, name, icons, colors.</p>
+        <span class="lbl">Why</span><p>Tells iOS to launch from the Home Screen chromeless instead of as a Safari tab.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>web/public/icon.svg + 3 PNGs <span class="badge">new</span></h3>
+      <div class="row">
+        <span class="lbl">What</span><p>App icon: 2×2 “boards” grid, house sage/cream palette. SVG source rasterized to 180 / 192 / 512 PNG.</p>
+        <span class="lbl">Why</span><p>Home Screen needs a real icon; iOS won't use SVG for <code>apple-touch-icon</code>, so PNGs are required. 192/512 feed the manifest.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>web/index.html — head meta</h3>
+      <div class="row">
+        <span class="lbl">What</span><p>Manifest link, <code>apple-mobile-web-app-capable</code>, theme-color, apple-touch-icon, and viewport <code class="k">maximum-scale=1, user-scalable=no, viewport-fit=cover</code>.</p>
+        <span class="lbl">Why</span><p>Makes it installable + full-screen; stops Safari zoom from fighting the canvas; draws under the status-bar safe area.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>web/index.html — css <span class="badge">page lock</span></h3>
+      <div class="row">
+        <span class="lbl">What</span><p><code>overscroll-behavior:none</code>, fixed body, no tap flash, plus a <code class="k">.wb-chrome</code> block for safe-area padding + coarse-pointer tap targets.</p>
+        <span class="lbl">Why</span><p>Kills bounce / pull-to-refresh / page-scroll and makes the toolbar finger-friendly on iPad only. Scoped so the tldraw canvas is untouched.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>web/src/App.tsx</h3>
+      <div class="row">
+        <span class="lbl">What</span><p>Added <code class="k">className="wb-chrome"</code> to the toolbar and <code class="k">wb-chip</code> to the id chip.</p>
+        <span class="lbl">Why</span><p>Hooks for the CSS above — inline styles can't do <code>@media</code> / <code>env()</code>. No logic changed.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>server.js</h3>
+      <div class="row">
+        <span class="lbl">What</span><p>Added <code>.webmanifest → application/manifest+json</code> to the MIME map.</p>
+        <span class="lbl">Why</span><p>The static server had no MIME for it; iOS ignores a manifest served as the wrong type.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>whiteboard.service</h3>
+      <div class="row">
+        <span class="lbl">What</span><p><code>WB_HOST</code>: <code>127.0.0.1 → 0.0.0.0</code> (+ comment).</p>
+        <span class="lbl">Why</span><p>The enabler — bound to localhost, the iPad literally can't reach it. <code>0.0.0.0</code> exposes it on the LAN.</p>
+      </div>
+    </div>
+    <div class="card change">
+      <h3>README.md</h3>
+      <div class="row">
+        <span class="lbl">What</span><p>New “On an iPad” install section; fixed the stale bind note.</p>
+        <span class="lbl">Why</span><p>Document the deploy + install flow and the security tradeoff.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="why"><b>Not committed:</b> <code>web/dist/</code> — rebuilt, but
+  gitignored (build artifact). The running server serves it from disk already.</p>
+
+  <h2>Set it up on the iPad</h2>
+  <ol class="steps">
+    <li><b>Build the UI</b> (once, and after any <code>web/</code> change):
+      <pre>cd "~/ClaudeChats/Shared Whiteboard/web" &amp;&amp; npm run build</pre>
+    </li>
+    <li><b>Serve on the LAN.</b> Stop the current server, then:
+      <pre>cd "~/ClaudeChats/Shared Whiteboard"
+WB_HOST=0.0.0.0 node server.js</pre>
+      (The bundled <code>whiteboard.service</code> already binds <code>0.0.0.0</code> if you run it as a service.)
+    </li>
+    <li><b>Open on the iPad.</b> In Safari go to
+      <code class="k">http://10.0.2.52:5858</code>.
+      <span class="why">(<code>hostname -I</code> prints the host's IPs.)</span>
+    </li>
+    <li><b>Install.</b> Share button → <b>Add to Home Screen</b> → <b>Add</b>.
+      Launch it from the new “Whiteboard” icon — it opens full-screen.</li>
+  </ol>
+
+  <blockquote>
+    <b>⚠️ Security:</b> binding <code>0.0.0.0</code> exposes the whiteboard to
+    <b>every device on the LAN</b>, with <b>no authentication</b> — anyone on the
+    network can read and edit boards. That's the intent for iPad-on-desk use. To
+    scope it tighter, bind a specific interface (e.g. your Tailscale address
+    <code>100.102.199.37</code>) instead of <code>0.0.0.0</code>.
+  </blockquote>
+
+  <p class="why">Keep the iPad and host on the same network — the page and its
+  WebSocket both talk to <code>&lt;the-host-you-opened&gt;:5858</code>, so LAN over
+  plain <code>http</code>/<code>ws</code> just works.</p>
+</main>
+</body>
+</html>

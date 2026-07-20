@@ -1,0 +1,16 @@
+{
+  "name": "camfung-plugins",
+  "description": "Plugins by camfung — starting with a live tldraw whiteboard you co-edit with Claude.",
+  "owner": {
+    "name": "camfung",
+    "email": "camf@caracal-tech.com"
+  },
+  "plugins": [
+    {
+      "name": "shared-whiteboard",
+      "source": ".",
+      "description": "Co-edit a live tldraw whiteboard with Claude (boxes, UML, notes, arrows, auto-layout).",
+      "version": "0.2.0"
+    }
+  ]
+}

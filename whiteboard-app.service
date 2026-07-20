@@ -1,0 +1,21 @@
+# Shared Whiteboard app server — systemd --user unit TEMPLATE.
+# install.sh bakes __NODE__ (absolute node path) and __REPO_DIR__ (this clone)
+# into ~/.config/systemd/user/whiteboard-app.service. Re-run install.sh after a
+# Node upgrade so __NODE__ points at the new binary (nvm paths are versioned).
+[Unit]
+Description=Shared Whiteboard — collaborative tldraw app server (sync + web UI + MCP HTTP API)
+After=network.target
+
+[Service]
+Type=simple
+# Bind all interfaces so LAN devices (e.g. an iPad) can reach it. To keep it
+# local-only, change to WB_HOST=127.0.0.1 and `systemctl --user restart`.
+Environment=WB_HOST=0.0.0.0
+Environment=WB_PORT=5858
+ExecStart=__NODE__ __REPO_DIR__/server.js
+WorkingDirectory=__REPO_DIR__
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
