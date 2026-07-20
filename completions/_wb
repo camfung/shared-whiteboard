@@ -2,7 +2,7 @@
 # zsh completion for the Shared Whiteboard CLI (wb).
 #
 # Commands are grouped: `wb <group> <command> [--flags]`
-#   groups: board | read | create | edit | template
+#   groups: board | read | create | edit | template | server
 #
 # Install (any one):
 #   1. Symlink into an fpath dir, then rebuild completion cache:
@@ -38,6 +38,7 @@ _wb() {
     'create:create shapes'
     'edit:edit the active board'
     'template:reusable templates'
+    'server:control the sync backend'
     'help:show help'
   )
 
@@ -75,6 +76,10 @@ _wb() {
         template)
           subs=('list:saved templates' 'save:save shapes as a template'
                 'stamp:stamp a template' 'delete:delete a template') ;;
+        server)
+          subs=('status:up? + pids + uptime' 'start:spawn backend if down' 'stop:stop the backend'
+                'restart:stop + start (picks up source edits)' 'rebuild:rebuild dist bundle + web UI, then restart'
+                'logs:tail the backend log' 'open:ensure up + open in browser' 'url:print backend URL') ;;
         *) return ;;
       esac
       _describe -t subcommands "wb ${line[1]} command" subs
@@ -160,6 +165,11 @@ _wb() {
           _arguments $common '--name[template name]:name:' '--x[x]:x:' '--y[y]:y:' ;;
         'template delete')
           _arguments '--name[template name]:name:' ;;
+
+        'server logs')
+          _arguments '--n[lines to show (default 40)]:lines:' '--follow[follow like tail -f]' ;;
+        'server status'|'server start'|'server stop'|'server restart'|'server rebuild'|'server open'|'server url')
+          _arguments ;;  # no flags (server commands ignore --board)
 
         *) _arguments $common ;;  # board list/current, read overlap, edit clear/reflow, template list
       esac

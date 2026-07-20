@@ -7,12 +7,24 @@
 // memory and a CLI can't, the active board is persisted to a small state file
 // (see STATE_FILE). `wb board open <name>` sets it; every read/edit command
 // targets it. Override per-call with --board <name|id>.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, openSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { spawn, execFileSync } from 'node:child_process'
 
 const BASE = process.env.WB_URL || 'http://127.0.0.1:5858'
 const STATE_FILE = process.env.WB_STATE || join(homedir(), '.config', 'shared-whiteboard', 'state.json')
+
+// ---- server lifecycle (this CLI owns the sync backend, no systemd needed) ----
+// wb-cli.js lives in the repo root, so its own dir is the clone. Prefer the
+// source entry (live edits) over the bundled one the plugin ships.
+const REPO_DIR = dirname(fileURLToPath(import.meta.url))
+const SERVER_ENTRY = ['server.js', 'dist/server.cjs'].map((f) => join(REPO_DIR, f)).find(existsSync)
+const SERVER_HOST = process.env.WB_HOST || '0.0.0.0'                 // 0.0.0.0 → LAN/iPad reachable
+const SERVER_PORT = process.env.WB_PORT || new URL(BASE).port || '5858'
+const LOG_FILE = join(homedir(), '.local', 'state', 'shared-whiteboard', 'server.log')
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ---- persisted "current board" ----
 function loadState() {
@@ -100,6 +112,66 @@ function qs(f = {}) {
 function out(obj) { console.log(JSON.stringify(obj, null, 2)) }
 function die(msg) { console.error(`error: ${msg}`); process.exit(1) }
 
+// ---- server lifecycle helpers ----
+async function serverUp() {
+  try { return (await fetch(`${BASE}/health`)).ok } catch { return false }
+}
+// PIDs of any backend (source or bundle) running out of THIS clone. Matches the
+// full command line via pgrep; excludes this CLI (wb-cli.js) by construction.
+function serverPids() {
+  const pids = new Set()
+  for (const entry of ['server.js', 'dist/server.cjs']) {
+    try {
+      const out = execFileSync('pgrep', ['-f', join(REPO_DIR, entry)], { encoding: 'utf8' })
+      for (const l of out.split('\n')) { const p = l.trim(); if (p) pids.add(Number(p)) }
+    } catch { /* pgrep exits 1 when nothing matches */ }
+  }
+  return [...pids]
+}
+// Process start time for a pid: elapsed seconds (etimes) + wall-clock start
+// (lstart). Null if the pid is gone or ps is unavailable.
+function procStart(pid) {
+  try {
+    const raw = execFileSync('ps', ['-o', 'etimes=,lstart=', '-p', String(pid)], { encoding: 'utf8' }).trim()
+    const m = raw.match(/^(\d+)\s+(.+)$/)
+    if (!m) return null
+    return { secs: Number(m[1]), since: localIso(new Date(m[2])) }
+  } catch { return null }
+}
+// Local-time ISO-8601 with offset, e.g. 2026-07-20T13:30:29-07:00 (not UTC).
+function localIso(d) {
+  const p = (n) => String(n).padStart(2, '0')
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', a = Math.abs(off)
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${p(Math.floor(a / 60))}:${p(a % 60)}`
+}
+function fmtDuration(s) {
+  s = Math.max(0, Math.floor(s))
+  const d = Math.floor(s / 86400); s %= 86400
+  const h = Math.floor(s / 3600); s %= 3600
+  const m = Math.floor(s / 60), sec = s % 60
+  return [d && `${d}d`, (d || h) && `${h}h`, (d || h || m) && `${m}m`, `${sec}s`].filter(Boolean).join(' ')
+}
+async function startServer() {
+  if (await serverUp()) return { already: true, url: BASE, pids: serverPids() }
+  if (!SERVER_ENTRY) die('no backend entry found (server.js / dist/server.cjs)')
+  mkdirSync(dirname(LOG_FILE), { recursive: true })
+  const fd = openSync(LOG_FILE, 'a')                                 // detached child logs here
+  const child = spawn(process.execPath, [SERVER_ENTRY], {
+    cwd: REPO_DIR, detached: true, stdio: ['ignore', fd, fd],
+    env: { ...process.env, WB_HOST: SERVER_HOST, WB_PORT: SERVER_PORT },
+  })
+  child.unref()
+  for (let i = 0; i < 100; i++) { if (await serverUp()) return { started: true, pid: child.pid, entry: SERVER_ENTRY, url: BASE, log: LOG_FILE }; await sleep(100) }
+  die(`backend failed to start on ${BASE} — check ${LOG_FILE}`)
+}
+async function stopServer() {
+  const pids = serverPids()
+  for (const pid of pids) { try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ } }
+  for (let i = 0; i < 50; i++) { if (!(await serverUp()) && !serverPids().length) break; await sleep(100) }
+  return { stopped: pids, up: await serverUp() }
+}
+
 // ---- commands, grouped as `wb <namespace> <sub> [--flags]`. ----
 const cmds = {
   board: {
@@ -175,6 +247,41 @@ const cmds = {
     stamp: (f) => bapi('/templates/stamp', 'POST', pick(f, ['name', 'x', 'y']), f),
     delete: (f) => api('/templates/delete', 'POST', pick(f, ['name'])),
   },
+
+  server: {
+    status: async () => {
+      const pids = serverPids()
+      const st = pids.length ? procStart(pids[0]) : null
+      return {
+        up: await serverUp(), url: BASE, pids,
+        upSince: st ? st.since : null,
+        upTime: st ? fmtDuration(st.secs) : null,
+        entry: SERVER_ENTRY, log: LOG_FILE,
+      }
+    },
+    start: () => startServer(),
+    stop: () => stopServer(),
+    restart: async () => { await stopServer(); return startServer() },
+    // Rebuild the plugin bundle (dist/*.cjs + web UI) from source, then restart.
+    rebuild: async () => {
+      execFileSync(process.execPath, [join(REPO_DIR, 'scripts', 'build-plugin.mjs')], { cwd: REPO_DIR, stdio: 'inherit' })
+      await stopServer()
+      return startServer()
+    },
+    logs: (f) => {
+      if (!existsSync(LOG_FILE)) die(`no log yet at ${LOG_FILE} (start the server with 'wb server start')`)
+      execFileSync('tail', [...(f.follow || f.f ? ['-f'] : []), '-n', String(f.n ?? 40), LOG_FILE], { stdio: 'inherit' })
+      return { log: LOG_FILE }
+    },
+    open: async () => {
+      await startServer()
+      for (const b of ['xdg-open', 'google-chrome', 'chromium', 'firefox']) {
+        try { spawn(b, [BASE], { detached: true, stdio: 'ignore' }).unref(); break } catch { /* try next */ }
+      }
+      return { opened: BASE }
+    },
+    url: () => ({ url: BASE }),
+  },
 }
 
 const HELP = `wb — Shared Whiteboard CLI
@@ -226,6 +333,16 @@ template — reusable templates
   template save   --name .. --ids '[..]'
   template stamp  --name .. --x .. --y ..
   template delete --name ..
+
+server — control the sync backend (no systemd needed)
+  server status                            up? + pids + entry + log path
+  server start                             spawn the backend (detached) if down
+  server stop                              stop this clone's backend
+  server restart                           stop + start (picks up source edits)
+  server rebuild                           rebuild dist/ bundle + web UI, then restart
+  server logs     [--n 40] [--follow]      tail the backend log
+  server open                              ensure up, open the board in a browser
+  server url                               print the backend URL
 
 Every command accepts --board <name|id> to target a board for one call
 without changing the active board.   Run 'wb <group> help' for a group's commands.`
