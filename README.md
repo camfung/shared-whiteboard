@@ -4,6 +4,7 @@ tags:
   - tldraw
   - mcp
   - tool
+  - plugin
 ---
 
 # Shared Whiteboard
@@ -12,6 +13,30 @@ Named, persistent draw.io-style whiteboards in the browser that **you and Claude
 edit at the same time**. Boards live on a small sync server; the browser renders
 them with [tldraw](https://tldraw.dev); an MCP server lets Claude open a board by
 name and mutate it. Your edits and Claude's edits appear on the same canvas.
+
+## Install (Claude Code plugin)
+
+The quickest way. Installs the MCP server **and** the sync backend + web UI in
+one step — no clone, no `npm install` (the plugin ships a self-contained bundle).
+Run these in Claude Code:
+
+```
+/plugin marketplace add camfung/shared-whiteboard
+/plugin install shared-whiteboard@camfung-plugins
+```
+
+- Restart Claude Code when prompted so it loads the MCP server.
+- On first use the plugin boots a local backend + web UI at
+  **http://127.0.0.1:5858** — open that in your browser to watch Claude draw live.
+- Nothing else to configure: the plugin auto-spawns the backend for you. The
+  manual **Run** and **Claude / MCP** sections below are only for running from
+  source (development).
+
+**Update later**: re-pull the marketplace, then reinstall:
+```
+/plugin marketplace update camfung-plugins
+/plugin install shared-whiteboard@camfung-plugins
+```
 
 ## The workflow it's built for
 1. Open the web UI, pick a board from the dropdown (or `＋ new`). The dropdown
@@ -63,7 +88,10 @@ No Figma-style linked masters (tldraw has none). A template is a captured bundle
 of records; stamping clones them with new ids at a target point. Copies are
 independent. Edit `data/templates.json` to inspect/prune.
 
-## Run
+## Run (from source / development)
+
+> Skip this if you installed the plugin above — it bundles and boots everything.
+> These steps are for hacking on the code or running a checkout by hand.
 
 ### Dev (hot reload)
 ```bash
@@ -103,7 +131,10 @@ the rubber-band bounce. It feels like a native app.
 Keep the iPad and host on the same network. The page and its WebSocket both talk
 to `<the-host-you-opened>:5858`, so LAN over plain `http`/`ws` just works.
 
-## Claude / MCP
+## Claude / MCP (from source)
+
+> Plugin users can skip this — `/plugin install` registers the MCP server via the
+> bundled `.mcp.json`. This is the manual registration for a source checkout.
 
 Registered at **user scope** (works in every project), pointing at the backend:
 ```bash
