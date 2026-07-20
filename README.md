@@ -45,6 +45,23 @@ Run these in Claude Code:
 3. Claude calls `open_board("Auth Redesign")` then edits — you watch it happen live.
 4. Either side can create boards; new boards show up in the other's list.
 
+## Skills
+
+The plugin ships two skills that give Claude a scripted first step: **boot the
+backend if it's down, then open the board in your browser** — so you never end up
+with Claude drawing to a window you can't see.
+
+- **create** — triggered when you ask Claude to draw, diagram, or add anything to
+  the whiteboard. Opens the board, then guides Claude through `create_node` /
+  `create_uml` / `create_note` / `create_text` / `connect`.
+- **edit** — triggered when you ask Claude to move, restyle, connect, rename,
+  re-layout, or delete existing shapes. Opens the board, then reads the current
+  shapes before mutating them.
+
+Each skill's `open-board.sh` is a thin wrapper over `wb server open` (pure Node —
+no `curl` or `node_modules` needed), so it works the same from a plugin install
+or a source clone.
+
 ## Architecture
 
 ### One authoritative document per board

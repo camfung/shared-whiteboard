@@ -17,10 +17,15 @@ const BASE = process.env.WB_URL || 'http://127.0.0.1:5858'
 const STATE_FILE = process.env.WB_STATE || join(homedir(), '.config', 'shared-whiteboard', 'state.json')
 
 // ---- server lifecycle (this CLI owns the sync backend, no systemd needed) ----
-// wb-cli.js lives in the repo root, so its own dir is the clone. Prefer the
-// source entry (live edits) over the bundled one the plugin ships.
+// wb-cli.js lives in the repo root, so its own dir is the clone. In a dev clone
+// (node_modules present) prefer the source entry for live edits; in a plugin
+// install (no node_modules) server.js can't import its deps, so run the
+// self-contained bundle instead.
 const REPO_DIR = dirname(fileURLToPath(import.meta.url))
-const SERVER_ENTRY = ['server.js', 'dist/server.cjs'].map((f) => join(REPO_DIR, f)).find(existsSync)
+const SERVER_ENTRY = (existsSync(join(REPO_DIR, 'node_modules'))
+  ? ['server.js', 'dist/server.cjs']
+  : ['dist/server.cjs', 'server.js']
+).map((f) => join(REPO_DIR, f)).find(existsSync)
 const SERVER_HOST = process.env.WB_HOST || '0.0.0.0'                 // 0.0.0.0 → LAN/iPad reachable
 const SERVER_PORT = process.env.WB_PORT || new URL(BASE).port || '5858'
 const LOG_FILE = join(homedir(), '.local', 'state', 'shared-whiteboard', 'server.log')
