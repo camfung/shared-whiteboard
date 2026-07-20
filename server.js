@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import {
   buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml,
-  geoSizeForText, richText, nextIndex, COLORS, FILLS, GEO, SIZES,
+  geoSizeForText, noteBox, richText, nextIndex, COLORS, FILLS, GEO, SIZES,
 } from './shapes.js'
 import { umlHeight, umlWidth } from './uml-schema.js'
 import { getIndexAbove } from '@tldraw/utils'
@@ -296,6 +296,11 @@ function applyUpdate(store, b) {
   if (rec.type === 'uml') {
     next.props.h = umlHeight(next.props.fields, next.props.methods)
     if (b.w == null) next.props.w = umlWidth(next.props.name, next.props.fields, next.props.methods)
+  }
+  if (rec.type === 'note' && b.text != null) {
+    const box = noteBox(extractText(next.props) || '', next.props.size)
+    next.props.growY = box.growY
+    next.meta = { ...next.meta, w: box.w }
   }
   store.put(next)
   return next.id

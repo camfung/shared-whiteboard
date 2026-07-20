@@ -5,12 +5,15 @@ import { inlineBase64AssetStore } from '@tldraw/editor'
 import 'tldraw/tldraw.css'
 import './hurmit.css' // override tldraw fonts with Hurmit (after tldraw.css)
 import { UmlShapeUtil } from './uml'
+import { StickyNoteUtil } from './note'
 import { BoardManager } from './BoardManager'
 
-// Full util sets — the custom uml shape alongside the defaults. useSync builds
-// the store schema from these (it replaces, not merges, so defaults must be
-// included); the same lists go to Tldraw for rendering. Matches the server schema.
-const SHAPE_UTILS = [...defaultShapeUtils, UmlShapeUtil]
+// Full util sets — the custom uml shape + our horizontally-growing note, alongside
+// the defaults. StickyNoteUtil replaces the stock NoteShapeUtil (same type 'note',
+// same props/schema — it only overrides the rendered width). useSync builds the
+// store schema from these (it replaces, not merges, so defaults must be included);
+// the same lists go to Tldraw for rendering. Matches the server schema.
+const SHAPE_UTILS = [...defaultShapeUtils.filter((u) => (u as any).type !== 'note'), StickyNoteUtil, UmlShapeUtil]
 const BINDING_UTILS = defaultBindingUtils
 
 const API = `http://${location.hostname}:5858`
