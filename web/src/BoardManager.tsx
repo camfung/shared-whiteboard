@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { PALETTE, type Theme } from './theme'
 
 // A board summary as delivered by GET /boards.
 type Board = { id: string; name: string; shapes: number; updatedAt: number }
@@ -24,6 +25,7 @@ type Shape = {
 type Props = {
   boards: Board[]
   api: string
+  theme: Theme
   onOpen: (id: string) => void
   onCreate: () => void
   onRename: (id: string) => void
@@ -103,7 +105,8 @@ function Thumb({ shapes }: { shapes: Shape[] | undefined }) {
   )
 }
 
-export function BoardManager({ boards, api, onOpen, onCreate, onRename, onDelete }: Props) {
+export function BoardManager({ boards, api, theme, onOpen, onCreate, onRename, onDelete }: Props) {
+  const p = PALETTE[theme]
   // Cached per-board shape lists for thumbnails. Key present = loaded (possibly
   // empty); key absent = still loading (renders "…").
   const [thumbs, setThumbs] = useState<Record<string, Shape[]>>({})
@@ -144,11 +147,18 @@ export function BoardManager({ boards, api, onOpen, onCreate, onRename, onDelete
 
   const sorted = [...boards].sort((a, b) => b.updatedAt - a.updatedAt)
 
+  // layout consts below are color-neutral; tint the ones that carry surfaces.
+  const gridS: React.CSSProperties = { ...grid, background: p.appBg, color: p.text }
+  const cardS: React.CSSProperties = { ...card, border: `1px solid ${p.btnBorder}`, background: p.cardBg }
+  const thumbBoxS: React.CSSProperties = { ...thumbBox, border: `1px solid ${p.thumbBorder}`, background: p.thumbBg }
+  const smallBtnS: React.CSSProperties = { ...smallBtn, border: `1px solid ${p.btnBorder}`, background: p.btnBg, color: p.text }
+  const newCardS: React.CSSProperties = { ...newCard, border: `1px dashed ${p.btnBorder}`, color: p.muted }
+
   return (
-    <div style={grid}>
+    <div style={gridS}>
       {sorted.map((b) => (
-        <div key={b.id} style={card}>
-          <div style={thumbBox} onClick={() => onOpen(b.id)} title="Open board">
+        <div key={b.id} style={cardS}>
+          <div style={thumbBoxS} onClick={() => onOpen(b.id)} title="Open board">
             <Thumb shapes={thumbs[b.id]} />
           </div>
           <div style={nameStyle} onClick={() => onOpen(b.id)} title={b.name}>
@@ -158,11 +168,11 @@ export function BoardManager({ boards, api, onOpen, onCreate, onRename, onDelete
             {b.shapes} shape{b.shapes === 1 ? '' : 's'} · {shortTime(b.updatedAt)}
           </div>
           <div style={actionRow}>
-            <button style={smallBtn} onClick={() => onRename(b.id)}>
+            <button style={smallBtnS} onClick={() => onRename(b.id)}>
               ✎ rename
             </button>
             <button
-              style={smallBtn}
+              style={smallBtnS}
               onClick={() => {
                 if (confirm(`Delete board "${b.name}"? This cannot be undone.`)) onDelete(b.id)
               }}
@@ -172,7 +182,7 @@ export function BoardManager({ boards, api, onOpen, onCreate, onRename, onDelete
           </div>
         </div>
       ))}
-      <div style={newCard} onClick={onCreate} title="Create a new board" role="button">
+      <div style={newCardS} onClick={onCreate} title="Create a new board" role="button">
         <span style={{ fontSize: 22, lineHeight: 1 }}>＋</span>
         <span>New board</span>
       </div>

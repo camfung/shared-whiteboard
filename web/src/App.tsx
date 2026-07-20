@@ -7,6 +7,7 @@ import './hurmit.css' // override tldraw fonts with Hurmit (after tldraw.css)
 import { UmlShapeUtil } from './uml'
 import { StickyNoteUtil } from './note'
 import { BoardManager } from './BoardManager'
+import { PALETTE, initialTheme, persistTheme, type Theme } from './theme'
 
 // Full util sets — the custom uml shape + our horizontally-growing note, alongside
 // the defaults. StickyNoteUtil replaces the stock NoteShapeUtil (same type 'note',
@@ -64,9 +65,9 @@ function installContainerDrag(editor: any) {
   }, { source: 'user', scope: 'document' })
 }
 
-function BoardCanvas({ boardId }: { boardId: string }) {
+function BoardCanvas({ boardId, theme }: { boardId: string; theme: Theme }) {
   const store = useSync({ uri: WS(boardId), assets: inlineBase64AssetStore, shapeUtils: SHAPE_UTILS, bindingUtils: BINDING_UTILS })
-  return <Tldraw store={store} shapeUtils={SHAPE_UTILS} bindingUtils={BINDING_UTILS} onMount={(editor) => { (window as any).editor = editor; return installContainerDrag(editor) }} />
+  return <Tldraw store={store} shapeUtils={SHAPE_UTILS} bindingUtils={BINDING_UTILS} onMount={(editor) => { (window as any).editor = editor; editor.user.updateUserPreferences({ colorScheme: theme }); return installContainerDrag(editor) }} />
 }
 
 type Template = { name: string; shapes: number }
@@ -78,6 +79,7 @@ export default function App() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [copied, setCopied] = useState(false)
   const [minGap, setMinGap] = useState(60)
+  const [theme, setTheme] = useState<Theme>(initialTheme)
 
   const refresh = useCallback(async () => {
     try {
@@ -115,6 +117,16 @@ export default function App() {
 
   // keep the URL hash in sync with the selection (reload-safe, shareable)
   useEffect(() => { if (current) location.hash = `board=${encodeURIComponent(current)}` }, [current])
+
+  // apply the theme: persist it, tint the page/status-bar, and push the color
+  // scheme into the live tldraw editor (if a board is mounted). BoardCanvas also
+  // applies it onMount so a board opened later still matches.
+  useEffect(() => {
+    persistTheme(theme)
+    document.body.style.background = PALETTE[theme].appBg
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', PALETTE[theme].barBg)
+    ;(window as any).editor?.user?.updateUserPreferences({ colorScheme: theme })
+  }, [theme])
 
   const select = (id: string) => setCurrent(id)
 
@@ -294,18 +306,19 @@ export default function App() {
     if (id === current) setCurrent(null)
   }
 
+  const p = PALETTE[theme]
   const bar: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px',
-    borderBottom: '1px solid #d8dbcf', background: '#eef0e6', fontSize: 13,
-    fontFamily: "'Hurmit Nerd Font', ui-monospace, monospace", color: '#3a3f2f',
+    borderBottom: `1px solid ${p.barBorder}`, background: p.barBg, fontSize: 13,
+    fontFamily: "'Hurmit Nerd Font', ui-monospace, monospace", color: p.text,
   }
   const btn: React.CSSProperties = {
     fontFamily: 'inherit', fontSize: 13, padding: '3px 10px', cursor: 'pointer',
-    border: '1px solid #b7bca8', borderRadius: 6, background: '#f7f8f1', color: '#3a3f2f',
+    border: `1px solid ${p.btnBorder}`, borderRadius: 6, background: p.btnBg, color: p.text,
   }
   const chip: React.CSSProperties = {
     fontFamily: 'inherit', fontSize: 11, padding: '2px 8px', cursor: 'pointer',
-    border: '1px solid #b7bca8', borderRadius: 999, background: '#f7f8f1', color: '#3a3f2f',
+    border: `1px solid ${p.btnBorder}`, borderRadius: 999, background: p.btnBg, color: p.text,
     opacity: 0.85, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5,
   }
 
@@ -334,10 +347,10 @@ export default function App() {
         <button style={btn} onClick={newBoard}>＋ new</button>
         <button style={btn} onClick={renameBoard} disabled={!current}>✎ rename</button>
         <button style={btn} onClick={() => setView('manager')} title="Browse all boards as a gallery">⊞ boards</button>
-        <span style={{ width: 1, height: 20, background: '#c7cbb8' }} />
+        <span style={{ width: 1, height: 20, background: p.sep }} />
         <button style={btn} onClick={addUml} disabled={!current}>＋ UML</button>
         <button style={btn} onClick={spaceNodes} disabled={!current} title="Space nodes apart to a minimum gap — selected shapes, or all nodes (container frames stay put)">⇔ space</button>
-        <span style={{ width: 1, height: 20, background: '#c7cbb8' }} />
+        <span style={{ width: 1, height: 20, background: p.sep }} />
         <button style={btn} onClick={saveTemplate} disabled={!current} title="Save selected shapes as a reusable template">💾 save tmpl</button>
         <select
           value=""
@@ -349,26 +362,32 @@ export default function App() {
           <option value="">stamp ▾</option>
           {templates.map((t) => <option key={t.name} value={t.name}>{t.name} · {t.shapes}</option>)}
         </select>
-        {!current && (
-          <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
-            select or create a board
-          </span>
-        )}
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {!current && <span style={{ opacity: 0.5 }}>select or create a board</span>}
+          <button
+            style={btn}
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? '☀ light' : '🌙 dark'}
+          </button>
+        </span>
       </div>
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {view === 'manager' ? (
           <BoardManager
             boards={boards}
             api={API}
+            theme={theme}
             onOpen={(id) => { setCurrent(id); setView('board') }}
             onCreate={newBoard}
             onRename={(id) => renameBoardById(id)}
             onDelete={deleteBoard}
           />
         ) : current ? (
-          <BoardCanvas key={current} boardId={current} />
+          <BoardCanvas key={current} boardId={current} theme={theme} />
         ) : (
-          <div style={{ display: 'grid', placeItems: 'center', height: '100%', fontFamily: "'Hurmit Nerd Font', monospace", color: '#6b7059' }}>
+          <div style={{ display: 'grid', placeItems: 'center', height: '100%', fontFamily: "'Hurmit Nerd Font', monospace", background: p.appBg, color: p.muted }}>
             <div style={{ textAlign: 'center' }}>
               <p>No board selected.</p>
               <button style={btn} onClick={newBoard}>＋ create a board</button>

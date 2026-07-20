@@ -60,6 +60,11 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
     const isEditing = editor.getEditingShapeId() === shape.id
     const { name, fields, methods, color } = shape.props as UmlProps
     const hex = HEX[color] || HEX.blue
+    // Match the canvas theme so the box doesn't glare white on a dark board.
+    // Reactive: re-renders when the color scheme flips.
+    const dark = editor.user.getIsDarkMode()
+    const surface = dark ? '#26292b' : '#fff'
+    const ink = dark ? '#e6e6e6' : '#1d1d1d'
 
     if (isEditing) {
       return (
@@ -79,7 +84,7 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
             style={{
               width: '100%', height: '100%', boxSizing: 'border-box', border: `2px solid ${hex}`,
               borderRadius: 6, padding: 8, font: `12px ${FONT}`, resize: 'none', outline: 'none',
-              background: '#fff', color: '#1d1d1d',
+              background: surface, color: ink,
             }}
           />
         </HTMLContainer>
@@ -91,8 +96,8 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
       <HTMLContainer
         style={{
           width: shape.props.w, height: shape.props.h, border: `2px solid ${hex}`, borderRadius: 6,
-          background: '#fff', overflow: 'hidden', display: 'flex', flexDirection: 'column',
-          font: `12px ${FONT}`, color: '#1d1d1d', boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          background: surface, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          font: `12px ${FONT}`, color: ink, boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
         }}
       >
         <div style={{ background: hex, color: '#fff', fontWeight: 700, textAlign: 'center', padding: '6px 8px' }}>
