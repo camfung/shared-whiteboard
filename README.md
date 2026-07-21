@@ -188,6 +188,11 @@ Editing the active board:
 - `delete_shapes {ids}` — also removes bound arrows.
 - `clear_board` — wipe shapes/arrows (keeps the board).
 
+Bulk (build a whole diagram in one transaction):
+- `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`text`/`note`/`uml`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. Keep it compact:
+  - `defaults` — an object merged under every op (the `op` type too), so shared props aren't repeated: `defaults:{op:"node",w:250,fill:"semi"}`.
+  - `{op:"col"|"row", x, y, step?, items[]}` — lay many boxes out from `(x,y)`, stepping down `y` (`col`) or along `x` (`row`); each item is a string or `{text,color?,…}` and inherits the layout op's shared props. Collapses a whole uniform column/grid into one op (irregular spacing → use plain `node` ops).
+
 Reusable templates (save a block once, stamp copies anywhere):
 - `list_templates` — saved templates (name + shape count).
 - `save_template {name, ids}` — capture the given shapes (+ arrows between them) from the active board as a template.

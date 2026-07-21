@@ -501,6 +501,44 @@ function roomFor(url) {
   return getRoom(boardId(url))
 }
 
+// Flatten the ops array for /batch, cutting the repetition in a hand-written
+// ops list two ways:
+//   • a batch-level `defaults` object is merged UNDER every op (op type too),
+//     so shared props (op:"node", w, fill, ...) aren't repeated per op.
+//   • a `col`/`row` op lays a list of boxes out from (x,y) stepping down y
+//     (col) or along x (row); each item is a string or {text, color?, ...} and
+//     inherits the layout op's shared node props — no repeated x/op/w/fill and
+//     no hand-computed y for each row.
+// Returns concrete ops (node/text/note/uml/connect/update/...) the loop below
+// already understands.
+function expandOps(rawOps, defaults = {}) {
+  const out = []
+  for (const raw of rawOps) {
+    const op = { ...defaults, ...raw }
+    if (op.op === 'col' || op.op === 'row') {
+      const horizontal = op.op === 'row'
+      const step = Number.isFinite(op.step) ? op.step : (horizontal ? 200 : 50)
+      const x0 = op.x ?? 0
+      const y0 = op.y ?? 0
+      const { op: _op, items, x: _x, y: _y, step: _step, ...shared } = op
+      const list = Array.isArray(items) ? items : []
+      list.forEach((it, i) => {
+        const item = typeof it === 'string' ? { text: it } : (it || {})
+        out.push({
+          op: item.op || 'node',
+          ...shared,
+          ...item,
+          x: horizontal ? x0 + i * step : x0,
+          y: horizontal ? y0 : y0 + i * step,
+        })
+      })
+    } else {
+      out.push(op)
+    }
+  }
+  return out
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`)
   const p = url.pathname
@@ -701,7 +739,7 @@ const server = http.createServer(async (req, res) => {
       // Apply many ops in ONE transaction. Create-ops may set a "ref" that later
       // ops reference in place of an id (build + connect in a single call).
       if (p === '/batch') {
-        const ops = Array.isArray(b.ops) ? b.ops : []
+        const ops = expandOps(Array.isArray(b.ops) ? b.ops : [], b.defaults && typeof b.defaults === 'object' ? b.defaults : {})
         const refs = {}
         await room.updateStore((store) => {
           let idx = nextIndex(store.getAll().filter((r) => r.typeName === 'shape').map((r) => r.index))

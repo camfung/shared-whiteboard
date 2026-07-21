@@ -316,8 +316,13 @@ Ops:
 - {op:"move_container", id, x?, y?, dx?, dy?}   (moves the box + everything inside it)
 - {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
 - {op:"delete", ids:[...]}
-Returns {refs:{ref:createdId}, count}. Colors: ${COLORS}. Shapes: ${GEOS}.`,
-  inputSchema: { ops: z.array(z.object({ op: z.string() }).catchall(z.any())).describe('ordered list of operations') },
+- {op:"col"|"row", x, y, step?, items:[...], + any shared node props (w/shape/color/fill/size)}  — lay out MANY boxes in one op: from (x,y), "col" steps down y / "row" steps along x by "step" (default 50/200). Each item is a bare string (text) or {text, color?, ...} and inherits the layout op's shared props. Collapses a whole column/grid of boxes into a single op — no repeated x/op/w/fill and no hand-computed y per row.
+Top-level "defaults": an object merged UNDER every op (the op type included), so you don't repeat shared props. e.g. defaults:{op:"node",w:250,fill:"semi"} then ops:[{text:"GND",x:180,y:166,color:"grey"}, ...]. Per-op values override defaults.
+Returns {refs:{ref:createdId}, count} (count = concrete shapes after col/row expansion). Colors: ${COLORS}. Shapes: ${GEOS}.`,
+  inputSchema: {
+    ops: z.array(z.object({ op: z.string().optional() }).catchall(z.any())).describe('ordered list of operations'),
+    defaults: z.object({}).catchall(z.any()).optional().describe('props merged under every op (op type included) to avoid repetition'),
+  },
 }, wrap((a) => bapi('/batch', 'POST', a)))
 
 // ---- reusable templates ----

@@ -18241,6 +18241,33 @@ function boardId(url) {
 function roomFor(url) {
   return getRoom(boardId(url));
 }
+function expandOps(rawOps, defaults = {}) {
+  const out = [];
+  for (const raw of rawOps) {
+    const op = { ...defaults, ...raw };
+    if (op.op === "col" || op.op === "row") {
+      const horizontal = op.op === "row";
+      const step = Number.isFinite(op.step) ? op.step : horizontal ? 200 : 50;
+      const x0 = op.x ?? 0;
+      const y0 = op.y ?? 0;
+      const { op: _op, items, x: _x, y: _y, step: _step, ...shared } = op;
+      const list = Array.isArray(items) ? items : [];
+      list.forEach((it, i) => {
+        const item = typeof it === "string" ? { text: it } : it || {};
+        out.push({
+          op: item.op || "node",
+          ...shared,
+          ...item,
+          x: horizontal ? x0 + i * step : x0,
+          y: horizontal ? y0 : y0 + i * step
+        });
+      });
+    } else {
+      out.push(op);
+    }
+  }
+  return out;
+}
 var server = import_node_http.default.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const p = url.pathname;
@@ -18440,7 +18467,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
         return json(res, 200, { ok: true });
       }
       if (p === "/batch") {
-        const ops = Array.isArray(b.ops) ? b.ops : [];
+        const ops = expandOps(Array.isArray(b.ops) ? b.ops : [], b.defaults && typeof b.defaults === "object" ? b.defaults : {});
         const refs = {};
         await room.updateStore((store) => {
           let idx = nextIndex(store.getAll().filter((r) => r.typeName === "shape").map((r) => r.index));

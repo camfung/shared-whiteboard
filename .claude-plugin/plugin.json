@@ -1,7 +1,7 @@
 {
   "name": "shared-whiteboard",
   "displayName": "Shared Whiteboard",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Co-edit a live tldraw whiteboard with Claude — boxes, UML classes, sticky notes, arrows, and server-side auto-layout. Boots a local sync backend + web UI (http://127.0.0.1:5858) so you watch Claude draw in real time in your browser.",
   "author": {
     "name": "camfung",
