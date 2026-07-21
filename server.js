@@ -118,6 +118,21 @@ function indexShape(s) {
   if (s.link) o.link = s.link
   return o
 }
+// Text-only projection (read_text): a shape's words + graph links, no
+// geometry/style. Full text (NOT truncated). Arrows keep their link so the
+// graph survives; textless non-arrow shapes are dropped.
+function textShape(s) {
+  if (s.type === 'arrow') {
+    const o = { id: s.id }
+    if (s.link) o.link = s.link
+    if (s.text) o.text = s.text
+    return o
+  }
+  const t = s.type === 'uml'
+    ? [s.name, ...(s.fields || []), ...(s.methods || [])].filter(Boolean).join(' / ')
+    : s.text
+  return t ? { id: s.id, text: t } : null
+}
 // The room's logical clock. tldraw exposes it as documentClock (older
 // snapshots used `clock`); per-record lastChangedClock counts on the same axis.
 function clockOf(snap) {
@@ -167,6 +182,18 @@ function boardView(room, q = {}) {
 function summarize(room) {
   return boardView(room)
 }
+// Bounded O(shape-types) summary — never grows the payload with the board.
+// What open_board returns: enough to know size/shape-mix + a clock to poll from,
+// without dumping every shape. Pull detail with list_shapes/get_shapes/get_board.
+function boardSummary(room) {
+  const snap = room.getCurrentSnapshot()
+  const recs = snap.documents.map((d) => d.state)
+  const shapes = recs.filter((r) => r.typeName === 'shape')
+  const bindings = recs.filter((r) => r.typeName === 'binding')
+  const byType = {}
+  for (const s of shapes) { const t = s.type; byType[t] = (byType[t] || 0) + 1 }
+  return { clock: clockOf(snap), counts: { shapes: shapes.length, bindings: bindings.length }, byType }
+}
 
 // Query shapes for /shapes: fields=index -> compact one-liners, else full.
 function queryShapes(room, q = {}) {
@@ -174,7 +201,9 @@ function queryShapes(room, q = {}) {
   const allRecs = snap.documents.map((d) => d.state)
   const linkMap = arrowLinkMap(allRecs)
   const full = attachLinks(allRecs.filter((r) => r.typeName === 'shape').map(mapShape).filter(shapeFilter(q)), linkMap)
-  const shapes = q.fields === 'index' ? full.map(indexShape) : full
+  const shapes = q.fields === 'index' ? full.map(indexShape)
+    : q.fields === 'text' ? full.map(textShape).filter(Boolean)
+    : full
   return { shapes, clock: clockOf(snap), counts: { shapes: shapes.length } }
 }
 
@@ -556,6 +585,10 @@ const server = http.createServer(async (req, res) => {
     if (M === 'GET' && p === '/shapes') {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
       return json(res, 200, { board: boardId(url), ...queryShapes(roomFor(url), parseQuery(url)) })
+    }
+    if (M === 'GET' && p === '/summary') {
+      if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })
+      return json(res, 200, { board: boardId(url), ...boardSummary(roomFor(url)) })
     }
     if (M === 'GET' && p === '/neighbors') {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` })

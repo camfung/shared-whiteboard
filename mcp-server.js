@@ -108,7 +108,7 @@ server.registerTool('list_boards', {
 }, wrap(() => api('/boards')))
 
 server.registerTool('open_board', {
-  description: 'Open a board by name (or id) and make it the active board for this session. Returns the board contents. All create/edit tools act on the open board. If several boards share a name, returns the matches without opening.',
+  description: 'Open a board by name (or id) and make it the active board for this session. Returns a compact SUMMARY only (shape/binding counts, a per-type breakdown, and the board clock) — NOT the shapes, so it stays cheap on arbitrarily large boards. All create/edit tools act on the open board. Read the content on demand: list_shapes for the index, get_shapes/get_neighbors to zoom in, get_board for everything (or poll edits with the clock as `since`). If several boards share a name, returns the matches without opening.',
   inputSchema: { name: z.string().describe('board name (as shown in the web UI) or id') },
 }, wrap(async ({ name }) => {
   const { matches } = await api(`/boards/find?q=${encodeURIComponent(name)}`)
@@ -118,8 +118,8 @@ server.registerTool('open_board', {
   }
   if (matches.length > 1) return { ambiguous: matches, note: 'multiple boards share this name — open by id' }
   current = matches[0]
-  const board = await api(`/board?board=${encodeURIComponent(current.id)}`)
-  return { opened: current, ...board }
+  const summary = await api(`/summary?board=${encodeURIComponent(current.id)}`)
+  return { opened: current, ...summary, note: 'Summary only. Use list_shapes for the index, get_shapes/get_neighbors for detail, or get_board for the full board.' }
 }))
 
 server.registerTool('create_board', {
@@ -177,6 +177,13 @@ server.registerTool('get_shapes', {
     type: z.string().optional(), color: z.string().optional(), text: z.string().optional(),
   },
 }, wrap((a) => bapi(`/shapes${qs({ ...a, fields: 'full' })}`)))
+
+server.registerTool('read_text', {
+  description: "All the WORDS on the active board and nothing else — every shape's full (untruncated) text, plus arrow links so the graph survives, with NO geometry/color/size. The cheapest way to load what the board SAYS into context (roughly half the tokens of get_board). Best for reading or summarizing content; when you need positions/styling or to lay shapes out use get_shapes/get_board. Filter with type/color/text.",
+  inputSchema: {
+    type: z.string().optional(), color: z.string().optional(), text: z.string().optional(),
+  },
+}, wrap((a) => bapi(`/shapes${qs({ ...a, fields: 'text' })}`)))
 
 server.registerTool('get_neighbors', {
   description: 'Graph neighborhood of one or more shapes: the seeds plus everything connected to them by arrows out to `hops` links (default 1), with the connecting arrows, full detail. Explore outward from a node without loading the whole board.',

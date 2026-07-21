@@ -164,13 +164,14 @@ always-on is recommended). Restart Claude Code to load the server after adding i
 ### Tools
 Board management:
 - `list_boards` — every board (name, id, shape count, updated).
-- `open_board {name}` — open by name/id, make it active, return its contents.
+- `open_board {name}` — open by name/id, make it active. Returns a compact **summary** (shape/binding counts, per-type breakdown, `clock`) — not the shapes, so it stays cheap on huge boards. Read the content on demand with the tools below.
 - `create_board {name}` — create + open + make active.
 - `rename_board {name, id?}` / `delete_board {name}`.
 
 Reading the active board (call `open_board` or `create_board` first):
 - `get_board {since?, type?, color?, text?, ids?}` — the whole board (shapes with id, type, x/y, w/h, color, text; uml shapes also give name/fields/methods) + arrow links + the board `clock`. Filters narrow it; `since=<clock>` returns only what changed. See *Reading big boards efficiently* below.
 - `list_shapes {type?, color?, text?}` — compact index: one `{id, type, label}` line per shape (+ arrow links). A cheap map of a large board.
+- `read_text {type?, color?, text?}` — all the words on the board: each shape's full (untruncated) text + arrow links (the graph), no geometry/color/size. ~half the tokens of `get_board`; best for reading/summarizing content.
 - `get_shapes {ids?, type?, color?, text?}` — full detail for specific shapes (by id, or by filter).
 - `get_neighbors {ids, hops?}` — a shape plus everything arrow-linked to it, out to `hops` links (default 1), with the connecting arrows.
 - `check_overlap` — layout-quality metrics (overlap ratio, worst offenders); decide/verify a re-layout.

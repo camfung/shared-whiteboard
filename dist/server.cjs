@@ -17866,6 +17866,16 @@ function indexShape(s) {
   if (s.link) o.link = s.link;
   return o;
 }
+function textShape(s) {
+  if (s.type === "arrow") {
+    const o = { id: s.id };
+    if (s.link) o.link = s.link;
+    if (s.text) o.text = s.text;
+    return o;
+  }
+  const t = s.type === "uml" ? [s.name, ...s.fields || [], ...s.methods || []].filter(Boolean).join(" / ") : s.text;
+  return t ? { id: s.id, text: t } : null;
+}
 function clockOf(snap) {
   return snap.documentClock ?? snap.clock ?? 0;
 }
@@ -17903,12 +17913,24 @@ function boardView(room, q = {}) {
 function summarize(room) {
   return boardView(room);
 }
+function boardSummary(room) {
+  const snap = room.getCurrentSnapshot();
+  const recs = snap.documents.map((d) => d.state);
+  const shapes = recs.filter((r) => r.typeName === "shape");
+  const bindings = recs.filter((r) => r.typeName === "binding");
+  const byType = {};
+  for (const s of shapes) {
+    const t = s.type;
+    byType[t] = (byType[t] || 0) + 1;
+  }
+  return { clock: clockOf(snap), counts: { shapes: shapes.length, bindings: bindings.length }, byType };
+}
 function queryShapes(room, q = {}) {
   const snap = room.getCurrentSnapshot();
   const allRecs = snap.documents.map((d) => d.state);
   const linkMap = arrowLinkMap(allRecs);
   const full = attachLinks(allRecs.filter((r) => r.typeName === "shape").map(mapShape).filter(shapeFilter(q)), linkMap);
-  const shapes = q.fields === "index" ? full.map(indexShape) : full;
+  const shapes = q.fields === "index" ? full.map(indexShape) : q.fields === "text" ? full.map(textShape).filter(Boolean) : full;
   return { shapes, clock: clockOf(snap), counts: { shapes: shapes.length } };
 }
 function neighborsView(room, seedIds, hops) {
@@ -18293,6 +18315,10 @@ var server = import_node_http.default.createServer(async (req, res) => {
     if (M === "GET" && p === "/shapes") {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` });
       return json(res, 200, { board: boardId(url), ...queryShapes(roomFor(url), parseQuery(url)) });
+    }
+    if (M === "GET" && p === "/summary") {
+      if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` });
+      return json(res, 200, { board: boardId(url), ...boardSummary(roomFor(url)) });
     }
     if (M === "GET" && p === "/neighbors") {
       if (!boardExists(boardId(url))) return json(res, 404, { error: `board "${boardId(url)}" not found` });
