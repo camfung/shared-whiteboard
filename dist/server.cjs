@@ -11842,9 +11842,9 @@ var StyleProp = class _StyleProp {
    * ```
    * @public
    */
-  static define(uniqueId2, options) {
+  static define(uniqueId3, options) {
     const { defaultValue, type = validation_exports.any } = options;
-    return new _StyleProp(uniqueId2, defaultValue, type);
+    return new _StyleProp(uniqueId3, defaultValue, type);
   }
   /**
    * Define a new {@link StyleProp} as a list of possible values.
@@ -11866,9 +11866,9 @@ var StyleProp = class _StyleProp {
    * })
    * ```
    */
-  static defineEnum(uniqueId2, options) {
+  static defineEnum(uniqueId3, options) {
     const { defaultValue, values } = options;
-    return new EnumStyleProp(uniqueId2, defaultValue, values);
+    return new EnumStyleProp(uniqueId3, defaultValue, values);
   }
   setDefaultValue(value) {
     this.defaultValue = value;
@@ -17530,6 +17530,7 @@ var DATA_DIR = process.env.WB_DATA_DIR || import_node_path.default.join(import_n
 // boards.js
 var SNAP_DIR = import_node_path2.default.join(DATA_DIR, "snapshots");
 var INDEX_FILE = import_node_path2.default.join(DATA_DIR, "boards.json");
+var FOLDERS_FILE = import_node_path2.default.join(DATA_DIR, "folders.json");
 import_node_fs.default.mkdirSync(SNAP_DIR, { recursive: true });
 var schema = createTLSchema({
   shapes: { ...defaultShapeSchemas, uml: { props: umlProps } },
@@ -17548,13 +17549,29 @@ function saveIndex(index2) {
   import_node_fs.default.writeFileSync(INDEX_FILE, JSON.stringify(index2, null, 2));
 }
 var index = loadIndex();
-function slugify(name) {
-  const base = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "board";
+function loadFolders() {
+  try {
+    return JSON.parse(import_node_fs.default.readFileSync(FOLDERS_FILE, "utf8"));
+  } catch {
+    return [];
+  }
+}
+function saveFolders(f) {
+  import_node_fs.default.writeFileSync(FOLDERS_FILE, JSON.stringify(f, null, 2));
+}
+var folders = loadFolders();
+function uniqueId2(name, taken, fallback) {
+  const base = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || fallback;
   let id = base;
   let n = 2;
-  const taken = new Set(index.map((b) => b.id));
   while (taken.has(id)) id = `${base}-${n++}`;
   return id;
+}
+function slugify(name) {
+  return uniqueId2(name, new Set(index.map((b) => b.id)), "board");
+}
+function folderExists(id) {
+  return id != null && folders.some((f) => f.id === id);
 }
 function touch(id) {
   const b = index.find((x) => x.id === id);
@@ -17590,7 +17607,7 @@ function scheduleSave(id) {
   );
 }
 function listBoards() {
-  return index.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).map((b) => ({ id: b.id, name: b.name, updatedAt: b.updatedAt, shapes: shapeCount(b.id) }));
+  return index.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).map((b) => ({ id: b.id, name: b.name, folderId: b.folderId ?? null, updatedAt: b.updatedAt, shapes: shapeCount(b.id) }));
 }
 function shapeCount(id) {
   const room = rooms.get(id);
@@ -17607,13 +17624,14 @@ function findBoards(query) {
   if (byId) return [{ id: byId.id, name: byId.name }];
   return index.filter((b) => b.name.toLowerCase() === q).map((b) => ({ id: b.id, name: b.name }));
 }
-function createBoard(name) {
+function createBoard(name, folderId) {
   const clean = String(name || "").trim() || "Untitled";
   const id = slugify(clean);
   const now = Date.now();
-  index.push({ id, name: clean, createdAt: now, updatedAt: now });
+  const folder = folderExists(folderId) ? folderId : null;
+  index.push({ id, name: clean, folderId: folder, createdAt: now, updatedAt: now });
   saveIndex(index);
-  return { id, name: clean };
+  return { id, name: clean, folderId: folder };
 }
 function renameBoard(id, name) {
   const b = index.find((x) => x.id === id);
@@ -17640,6 +17658,48 @@ function deleteBoard(id) {
   index = index.filter((b) => b.id !== id);
   saveIndex(index);
   return { deleted: id };
+}
+function listFolders() {
+  return folders.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).map((f) => ({ id: f.id, name: f.name, updatedAt: f.updatedAt, boards: index.filter((b) => (b.folderId ?? null) === f.id).length }));
+}
+function createFolder(name) {
+  const clean = String(name || "").trim() || "Untitled";
+  const id = uniqueId2(clean, new Set(folders.map((f) => f.id)), "folder");
+  const now = Date.now();
+  folders.push({ id, name: clean, createdAt: now, updatedAt: now });
+  saveFolders(folders);
+  return { id, name: clean };
+}
+function renameFolder(id, name) {
+  const f = folders.find((x) => x.id === id);
+  if (!f) throw new Error(`folder ${id} not found`);
+  f.name = String(name || "").trim() || f.name;
+  f.updatedAt = Date.now();
+  saveFolders(folders);
+  return { id: f.id, name: f.name };
+}
+function deleteFolder(id) {
+  if (!folderExists(id)) throw new Error(`folder ${id} not found`);
+  const inside = index.filter((b) => (b.folderId ?? null) === id).map((b) => b.id);
+  for (const bid of inside) deleteBoard(bid);
+  folders = folders.filter((f) => f.id !== id);
+  saveFolders(folders);
+  return { deleted: id, boards: inside };
+}
+function moveBoards(ids, folderId) {
+  const target = folderId == null ? null : folderId;
+  if (target != null && !folderExists(target)) throw new Error(`folder ${target} not found`);
+  const set = new Set(Array.isArray(ids) ? ids : [ids]);
+  const now = Date.now();
+  const moved = [];
+  for (const b of index) {
+    if (!set.has(b.id)) continue;
+    b.folderId = target;
+    b.updatedAt = now;
+    moved.push(b.id);
+  }
+  saveIndex(index);
+  return { moved, folderId: target };
 }
 function getRoom(id) {
   let room = rooms.get(id);
@@ -18168,7 +18228,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
     if (M === "GET" && p === "/boards") return json(res, 200, { boards: listBoards() });
     if (M === "POST" && p === "/boards") {
       const b = await readBody(req);
-      return json(res, 200, createBoard(b.name));
+      return json(res, 200, createBoard(b.name, b.folderId));
     }
     if (M === "POST" && p === "/boards/rename") {
       const b = await readBody(req);
@@ -18176,10 +18236,28 @@ var server = import_node_http.default.createServer(async (req, res) => {
     }
     if (M === "POST" && p === "/boards/delete") {
       const b = await readBody(req);
-      return json(res, 200, deleteBoard(b.id));
+      const ids = Array.isArray(b.ids) ? b.ids : b.id ? [b.id] : [];
+      return json(res, 200, { deleted: ids.map((id) => deleteBoard(id).deleted) });
+    }
+    if (M === "POST" && p === "/boards/move") {
+      const b = await readBody(req);
+      return json(res, 200, moveBoards(b.ids ?? b.id, b.folderId ?? null));
     }
     if (M === "GET" && p === "/boards/find") {
       return json(res, 200, { matches: findBoards(url.searchParams.get("q")) });
+    }
+    if (M === "GET" && p === "/folders") return json(res, 200, { folders: listFolders() });
+    if (M === "POST" && p === "/folders") {
+      const b = await readBody(req);
+      return json(res, 200, createFolder(b.name));
+    }
+    if (M === "POST" && p === "/folders/rename") {
+      const b = await readBody(req);
+      return json(res, 200, renameFolder(b.id, b.name));
+    }
+    if (M === "POST" && p === "/folders/delete") {
+      const b = await readBody(req);
+      return json(res, 200, deleteFolder(b.id));
     }
     if (M === "GET" && p === "/templates") return json(res, 200, { templates: listTemplates() });
     if (M === "POST" && p === "/templates") {
