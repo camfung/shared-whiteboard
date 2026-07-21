@@ -19,6 +19,7 @@ import { umlHeight, umlWidth } from './uml-schema.js'
 import { getIndexAbove } from '@tldraw/utils'
 import {
   getRoom, listBoards, createBoard, renameBoard, deleteBoard, findBoards, boardExists,
+  listFolders, createFolder, renameFolder, deleteFolder, moveBoards,
 } from './boards.js'
 import {
   listTemplates, saveTemplate, getTemplate, deleteTemplate, stampRecords,
@@ -483,7 +484,7 @@ const server = http.createServer(async (req, res) => {
     if (M === 'GET' && p === '/boards') return json(res, 200, { boards: listBoards() })
     if (M === 'POST' && p === '/boards') {
       const b = await readBody(req)
-      return json(res, 200, createBoard(b.name))
+      return json(res, 200, createBoard(b.name, b.folderId))
     }
     if (M === 'POST' && p === '/boards/rename') {
       const b = await readBody(req)
@@ -491,10 +492,30 @@ const server = http.createServer(async (req, res) => {
     }
     if (M === 'POST' && p === '/boards/delete') {
       const b = await readBody(req)
-      return json(res, 200, deleteBoard(b.id))
+      const ids = Array.isArray(b.ids) ? b.ids : b.id ? [b.id] : []
+      return json(res, 200, { deleted: ids.map((id) => deleteBoard(id).deleted) })
+    }
+    if (M === 'POST' && p === '/boards/move') {
+      const b = await readBody(req)
+      return json(res, 200, moveBoards(b.ids ?? b.id, b.folderId ?? null))
     }
     if (M === 'GET' && p === '/boards/find') {
       return json(res, 200, { matches: findBoards(url.searchParams.get('q')) })
+    }
+
+    // ---- folders ----
+    if (M === 'GET' && p === '/folders') return json(res, 200, { folders: listFolders() })
+    if (M === 'POST' && p === '/folders') {
+      const b = await readBody(req)
+      return json(res, 200, createFolder(b.name))
+    }
+    if (M === 'POST' && p === '/folders/rename') {
+      const b = await readBody(req)
+      return json(res, 200, renameFolder(b.id, b.name))
+    }
+    if (M === 'POST' && p === '/folders/delete') {
+      const b = await readBody(req)
+      return json(res, 200, deleteFolder(b.id))
     }
 
     // ---- templates ----

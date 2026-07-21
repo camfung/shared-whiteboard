@@ -13,6 +13,7 @@ import { DATA_DIR } from './data-dir.js'
 
 const SNAP_DIR = path.join(DATA_DIR, 'snapshots')
 const INDEX_FILE = path.join(DATA_DIR, 'boards.json')
+const FOLDERS_FILE = path.join(DATA_DIR, 'folders.json')
 
 fs.mkdirSync(SNAP_DIR, { recursive: true })
 
@@ -37,18 +38,41 @@ function saveIndex(index) {
 }
 let index = loadIndex()
 
-function slugify(name) {
+// ---- folder index (id + name + timestamps) -------------------------------
+// Folders are a single, flat level: a board's `folderId` is either a folder id
+// or null (root). Folders never contain other folders.
+function loadFolders() {
+  try {
+    return JSON.parse(fs.readFileSync(FOLDERS_FILE, 'utf8'))
+  } catch {
+    return []
+  }
+}
+function saveFolders(f) {
+  fs.writeFileSync(FOLDERS_FILE, JSON.stringify(f, null, 2))
+}
+let folders = loadFolders()
+
+// A url-safe id from a name, made unique against `taken`.
+function uniqueId(name, taken, fallback) {
   const base =
     String(name || '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
-      .slice(0, 48) || 'board'
+      .slice(0, 48) || fallback
   let id = base
   let n = 2
-  const taken = new Set(index.map((b) => b.id))
   while (taken.has(id)) id = `${base}-${n++}`
   return id
+}
+
+function slugify(name) {
+  return uniqueId(name, new Set(index.map((b) => b.id)), 'board')
+}
+
+function folderExists(id) {
+  return id != null && folders.some((f) => f.id === id)
 }
 
 function touch(id) {
@@ -92,7 +116,7 @@ export function listBoards() {
   return index
     .slice()
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .map((b) => ({ id: b.id, name: b.name, updatedAt: b.updatedAt, shapes: shapeCount(b.id) }))
+    .map((b) => ({ id: b.id, name: b.name, folderId: b.folderId ?? null, updatedAt: b.updatedAt, shapes: shapeCount(b.id) }))
 }
 
 function shapeCount(id) {
@@ -114,13 +138,14 @@ export function findBoards(query) {
   return index.filter((b) => b.name.toLowerCase() === q).map((b) => ({ id: b.id, name: b.name }))
 }
 
-export function createBoard(name) {
+export function createBoard(name, folderId) {
   const clean = String(name || '').trim() || 'Untitled'
   const id = slugify(clean)
   const now = Date.now()
-  index.push({ id, name: clean, createdAt: now, updatedAt: now })
+  const folder = folderExists(folderId) ? folderId : null
+  index.push({ id, name: clean, folderId: folder, createdAt: now, updatedAt: now })
   saveIndex(index)
-  return { id, name: clean }
+  return { id, name: clean, folderId: folder }
 }
 
 export function renameBoard(id, name) {
@@ -143,6 +168,61 @@ export function deleteBoard(id) {
   index = index.filter((b) => b.id !== id)
   saveIndex(index)
   return { deleted: id }
+}
+
+// ---- folders --------------------------------------------------------------
+export function listFolders() {
+  return folders
+    .slice()
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .map((f) => ({ id: f.id, name: f.name, updatedAt: f.updatedAt, boards: index.filter((b) => (b.folderId ?? null) === f.id).length }))
+}
+
+export function createFolder(name) {
+  const clean = String(name || '').trim() || 'Untitled'
+  const id = uniqueId(clean, new Set(folders.map((f) => f.id)), 'folder')
+  const now = Date.now()
+  folders.push({ id, name: clean, createdAt: now, updatedAt: now })
+  saveFolders(folders)
+  return { id, name: clean }
+}
+
+export function renameFolder(id, name) {
+  const f = folders.find((x) => x.id === id)
+  if (!f) throw new Error(`folder ${id} not found`)
+  f.name = String(name || '').trim() || f.name
+  f.updatedAt = Date.now()
+  saveFolders(folders)
+  return { id: f.id, name: f.name }
+}
+
+// Delete a folder AND every board inside it (recursive — closes their rooms and
+// removes their snapshots). Returns the folder id plus the deleted board ids.
+export function deleteFolder(id) {
+  if (!folderExists(id)) throw new Error(`folder ${id} not found`)
+  const inside = index.filter((b) => (b.folderId ?? null) === id).map((b) => b.id)
+  for (const bid of inside) deleteBoard(bid)
+  folders = folders.filter((f) => f.id !== id)
+  saveFolders(folders)
+  return { deleted: id, boards: inside }
+}
+
+// Move one or more boards into a folder (folderId null → root). Unknown target
+// throws; unknown board ids are silently skipped.
+export function moveBoards(ids, folderId) {
+  const target = folderId == null ? null : folderId
+  if (target != null && !folderExists(target)) throw new Error(`folder ${target} not found`)
+  const set = new Set(Array.isArray(ids) ? ids : [ids])
+  const now = Date.now()
+  const moved = []
+  for (const b of index) {
+    if (!set.has(b.id)) continue
+    b.folderId = target
+    b.updatedAt = now
+    moved.push(b.id)
+  }
+  saveIndex(index)
+  return { moved, folderId: target }
 }
 
 // Get (or lazily create + load) the room for a board id. Auto-registers a board
