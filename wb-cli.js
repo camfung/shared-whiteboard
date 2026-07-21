@@ -234,6 +234,18 @@ const cmds = {
     delete: (f) => bapi('/delete', 'POST', pick(f, ['ids']), f),
     clear: (f) => bapi('/clear', 'POST', {}, f),
     reflow: (f) => bapi('/reflow-labels', 'POST', {}, f),
+    // Re-fit boxes to their text: height always auto-fits, width too if --w given.
+    // Whole board by default, or a subset via --ids. Fixes clipped/oversized boxes.
+    refit: async (f) => {
+      const ids = Array.isArray(f.ids) && f.ids.length
+        ? f.ids
+        : (await bapi(`/shapes${qs({ type: 'geo', fields: 'index' })}`, 'GET', undefined, f)).shapes.map((s) => s.id)
+      if (!ids.length) return { refit: 0 }
+      const w = f.w != null && f.w !== true ? { w: f.w } : {}
+      const ops = ids.map((id) => ({ op: 'update', id, ...w }))
+      const r = await bapi('/batch', 'POST', { ops }, f)
+      return { refit: ids.length, ...r }
+    },
     ops: async (f) => {
       let ops = f.ops
       if (ops === undefined) { // read JSON from stdin: an array, or {ops:[...]}
@@ -315,19 +327,20 @@ read — read the active board
   read overlap                                                      layout-quality check
 
 create — create shapes
-  create node    --text .. --x .. --y .. [--w --h --shape --color --fill]
+  create node    --text .. --x .. --y .. [--w --shape --color --fill]
   create text    --text .. --x .. --y .. [--color --size]
   create note    --text .. --x .. --y .. [--color]
   create uml     --name .. --x .. --y .. [--fields '[..]' --methods '[..]' --color]
 
 edit — edit the active board
-  edit node      --id .. [--text --x --y --w --h --color --fill]
+  edit node      --id .. [--text --x --y --w --color --fill]
   edit uml       --id .. [--name --fields --methods --color --x --y --w]
   edit field     --id .. --field ".."
   edit method    --id .. --method ".."
   edit connect   --fromId .. --toId .. [--text --color --dashed]
   edit move      --id .. [--x --y --dx --dy]        move a container + its contents
   edit space     [--gap 60] [--id <container>]      tidy spacing (whole board, or one container)
+  edit refit     [--ids '[..]'] [--w N]             auto-fit box height to text (whole board, or a subset)
   edit delete    --ids '["shape:a"]'
   edit clear
   edit reflow
