@@ -20,7 +20,8 @@ const BINDING_UTILS = defaultBindingUtils
 const API = `http://${location.hostname}:5858`
 const WS = (id: string) => `ws://${location.hostname}:5858/connect/${encodeURIComponent(id)}`
 
-type Board = { id: string; name: string; shapes: number; updatedAt: number }
+type Board = { id: string; name: string; folderId: string | null; shapes: number; updatedAt: number }
+type Folder = { id: string; name: string; boards: number; updatedAt: number }
 
 function hashBoard(): string | null {
   const m = location.hash.match(/board=([^&]+)/)
@@ -74,6 +75,7 @@ type Template = { name: string; shapes: number }
 
 export default function App() {
   const [boards, setBoards] = useState<Board[]>([])
+  const [folders, setFolders] = useState<Folder[]>([])
   const [current, setCurrent] = useState<string | null>(hashBoard())
   const [view, setView] = useState<'board' | 'manager'>('board')
   const [templates, setTemplates] = useState<Template[]>([])
@@ -102,18 +104,26 @@ export default function App() {
     } catch { /* ignore transient */ }
   }, [])
 
+  const refreshFolders = useCallback(async () => {
+    try {
+      const { folders } = await (await fetch(`${API}/folders`)).json()
+      if (Array.isArray(folders)) setFolders(folders)
+    } catch { /* ignore transient */ }
+  }, [])
+
   // initial load + light polling so boards/templates made elsewhere appear
   useEffect(() => {
     let alive = true
     ;(async () => {
       const bs = await refresh()
       await refreshTemplates()
+      await refreshFolders()
       if (!alive) return
       setCurrent((c) => c || hashBoard() || bs[0]?.id || null)
     })()
-    const t = setInterval(() => { refresh(); refreshTemplates() }, 4000)
+    const t = setInterval(() => { refresh(); refreshTemplates(); refreshFolders() }, 4000)
     return () => { alive = false; clearInterval(t) }
-  }, [refresh, refreshTemplates])
+  }, [refresh, refreshTemplates, refreshFolders])
 
   // keep the URL hash in sync with the selection (reload-safe, shareable)
   useEffect(() => { if (current) location.hash = `board=${encodeURIComponent(current)}` }, [current])
@@ -281,11 +291,13 @@ export default function App() {
     await fetch(`${API}/templates/stamp?board=${encodeURIComponent(current)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, x, y }) })
   }
 
-  const newBoard = async () => {
+  const newBoard = async (folderId?: string) => {
     const name = prompt('New board name:')
     if (!name) return
-    const b = await (await fetch(`${API}/boards`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).json()
+    const fid = typeof folderId === 'string' ? folderId : null
+    const b = await (await fetch(`${API}/boards`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, folderId: fid }) })).json()
     await refresh()
+    await refreshFolders()
     setCurrent(b.id)
     setView('board') // land in the freshly created board (also when created from the manager)
   }
@@ -300,10 +312,40 @@ export default function App() {
 
   const renameBoard = () => { if (current) renameBoardById(current) }
 
-  const deleteBoard = async (id: string) => {
-    await fetch(`${API}/boards/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+  const deleteBoards = async (ids: string[]) => {
+    if (!ids.length) return
+    await fetch(`${API}/boards/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) })
     await refresh()
-    if (id === current) setCurrent(null)
+    await refreshFolders()
+    if (current && ids.includes(current)) setCurrent(null)
+  }
+
+  const moveBoards = async (ids: string[], folderId: string | null) => {
+    if (!ids.length) return
+    await fetch(`${API}/boards/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, folderId }) })
+    await refresh()
+    await refreshFolders()
+  }
+
+  const newFolder = async () => {
+    const name = prompt('New folder name:')
+    if (!name) return
+    await fetch(`${API}/folders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })
+    refreshFolders()
+  }
+
+  const renameFolderById = async (id: string) => {
+    const f = folders.find((x) => x.id === id)
+    const name = prompt('Rename folder:', f?.name || '')
+    if (!name) return
+    await fetch(`${API}/folders/rename`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, name }) })
+    refreshFolders()
+  }
+
+  const deleteFolderById = async (id: string) => {
+    await fetch(`${API}/folders/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+    await refreshFolders()
+    await refresh() // boards inside the folder were deleted too
   }
 
   const p = PALETTE[theme]
@@ -344,7 +386,7 @@ export default function App() {
             {copied ? 'copied ✓' : <>{current} <span style={{ opacity: 0.6 }}>⧉</span></>}
           </span>
         )}
-        <button style={btn} onClick={newBoard}>＋ new</button>
+        <button style={btn} onClick={() => newBoard()}>＋ new</button>
         <button style={btn} onClick={renameBoard} disabled={!current}>✎ rename</button>
         <button style={btn} onClick={() => setView('manager')} title="Browse all boards as a gallery">⊞ boards</button>
         <span style={{ width: 1, height: 20, background: p.sep }} />
@@ -377,12 +419,17 @@ export default function App() {
         {view === 'manager' ? (
           <BoardManager
             boards={boards}
+            folders={folders}
             api={API}
             theme={theme}
             onOpen={(id) => { setCurrent(id); setView('board') }}
-            onCreate={newBoard}
+            onCreate={(folderId) => newBoard(folderId)}
             onRename={(id) => renameBoardById(id)}
-            onDelete={deleteBoard}
+            onDeleteBoards={deleteBoards}
+            onMoveBoards={moveBoards}
+            onCreateFolder={newFolder}
+            onRenameFolder={renameFolderById}
+            onDeleteFolder={deleteFolderById}
           />
         ) : current ? (
           <BoardCanvas key={current} boardId={current} theme={theme} />
@@ -390,7 +437,7 @@ export default function App() {
           <div style={{ display: 'grid', placeItems: 'center', height: '100%', fontFamily: "'Hurmit Nerd Font', monospace", background: p.appBg, color: p.muted }}>
             <div style={{ textAlign: 'center' }}>
               <p>No board selected.</p>
-              <button style={btn} onClick={newBoard}>＋ create a board</button>
+              <button style={btn} onClick={() => newBoard()}>＋ create a board</button>
             </div>
           </div>
         )}
