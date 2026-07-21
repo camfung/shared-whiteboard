@@ -7749,12 +7749,12 @@ function geoSizeForText(text = "", size = "m", geo = "rectangle", scale = 1, tar
   const h = Math.round(Math.max(48, rows * fs4 * GEO_LINE + GEO_PAD_Y) * roomy);
   return { w, h };
 }
-function buildGeo({ text = "", x = 0, y = 0, w, h, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", index: index2 }) {
+function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", index: index2 }) {
   const { size: s, scale } = bumpSize(size);
-  const fit = geoSizeForText(text, s, geo, scale, w != null && h == null ? w : null);
+  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null);
   return baseShape("geo", x, y, index2, {
     w: w ?? fit.w,
-    h: h ?? fit.h,
+    h: fit.h,
     geo,
     dash,
     growY: 0,
@@ -17954,14 +17954,13 @@ function applyUpdate(store, b) {
   if (b.x != null) next.x = b.x;
   if (b.y != null) next.y = b.y;
   if (b.w != null && "w" in next.props) next.props.w = b.w;
-  if (b.h != null && "h" in next.props) next.props.h = b.h;
   if (b.color != null && "color" in next.props) next.props.color = b.color;
   if (b.fill != null && "fill" in next.props) next.props.fill = b.fill;
   if (b.text != null && "richText" in next.props) next.props.richText = richText(b.text);
   if (b.name != null && "name" in next.props) next.props.name = String(b.name);
   if (Array.isArray(b.fields) && "fields" in next.props) next.props.fields = b.fields.map(String);
   if (Array.isArray(b.methods) && "methods" in next.props) next.props.methods = b.methods.map(String);
-  if (rec.type === "geo" && b.h == null) {
+  if (rec.type === "geo") {
     const targetW = b.w != null ? b.w : next.props.w;
     const fit = geoSizeForText(extractText(next.props) || "", next.props.size, next.props.geo, next.props.scale, targetW);
     next.props.w = fit.w;
@@ -18236,7 +18235,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
         checkEnum("fill", b.fill, FILLS);
         checkEnum("shape", b.shape, GEO);
         checkEnum("size", b.size, SIZES);
-        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, h: b.h, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) });
+        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) });
         await put(room, rec);
         return json(res, 200, { id: rec.id });
       }
@@ -18354,7 +18353,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
               checkEnum("fill", op.fill, FILLS);
               checkEnum("shape", op.shape, GEO);
               checkEnum("size", op.size, SIZES);
-              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() });
+              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() });
               store.put(rec);
               if (op.ref) refs[op.ref] = rec.id;
             } else if (k === "text") {

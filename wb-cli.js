@@ -216,14 +216,14 @@ const cmds = {
   },
 
   create: {
-    node: (f) => bapi('/node', 'POST', pick(f, ['text', 'x', 'y', 'w', 'h', 'shape', 'color', 'fill']), f),
+    node: (f) => bapi('/node', 'POST', pick(f, ['text', 'x', 'y', 'w', 'shape', 'color', 'fill']), f),
     text: (f) => bapi('/text', 'POST', pick(f, ['text', 'x', 'y', 'color', 'size']), f),
     note: (f) => bapi('/note', 'POST', pick(f, ['text', 'x', 'y', 'color']), f),
     uml: (f) => bapi('/uml', 'POST', pick(f, ['name', 'x', 'y', 'fields', 'methods', 'color']), f),
   },
 
   edit: {
-    node: (f) => bapi('/update', 'POST', pick(f, ['id', 'text', 'x', 'y', 'w', 'h', 'color', 'fill']), f),
+    node: (f) => bapi('/update', 'POST', pick(f, ['id', 'text', 'x', 'y', 'w', 'color', 'fill']), f),
     uml: (f) => bapi('/update', 'POST', pick(f, ['id', 'name', 'fields', 'methods', 'color', 'x', 'y', 'w']), f),
     field: (f) => bapi('/uml/add', 'POST', pick(f, ['id', 'field']), f),
     method: (f) => bapi('/uml/add', 'POST', pick(f, ['id', 'method']), f),

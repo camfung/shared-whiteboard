@@ -281,16 +281,15 @@ function applyUpdate(store, b) {
   if (b.x != null) next.x = b.x
   if (b.y != null) next.y = b.y
   if (b.w != null && 'w' in next.props) next.props.w = b.w
-  if (b.h != null && 'h' in next.props) next.props.h = b.h
   if (b.color != null && 'color' in next.props) next.props.color = b.color
   if (b.fill != null && 'fill' in next.props) next.props.fill = b.fill
   if (b.text != null && 'richText' in next.props) next.props.richText = richText(b.text)
   if (b.name != null && 'name' in next.props) next.props.name = String(b.name)
   if (Array.isArray(b.fields) && 'fields' in next.props) next.props.fields = b.fields.map(String)
   if (Array.isArray(b.methods) && 'methods' in next.props) next.props.methods = b.methods.map(String)
-  if (rec.type === 'geo' && b.h == null) {
-    // h not pinned: keep the effective width (caller's new w, else the box's
-    // current w) and refit height to the text wrapped at that width, so an
+  if (rec.type === 'geo') {
+    // height always auto-fits: keep the effective width (caller's new w, else the
+    // box's current w) and refit height to the text wrapped at that width, so an
     // in-place text edit never overflows and never explodes the author's layout.
     const targetW = b.w != null ? b.w : next.props.w
     const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale, targetW)
@@ -557,7 +556,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/node') {
         checkEnum('color', b.color, COLORS); checkEnum('fill', b.fill, FILLS)
         checkEnum('shape', b.shape, GEO); checkEnum('size', b.size, SIZES)
-        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, h: b.h, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) })
+        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) })
         await put(room, rec)
         return json(res, 200, { id: rec.id })
       }
@@ -658,7 +657,7 @@ const server = http.createServer(async (req, res) => {
             const k = op.op
             if (k === 'node') {
               checkEnum('color', op.color, COLORS); checkEnum('fill', op.fill, FILLS); checkEnum('shape', op.shape, GEO); checkEnum('size', op.size, SIZES)
-              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() })
+              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() })
               store.put(rec); if (op.ref) refs[op.ref] = rec.id
             } else if (k === 'text') {
               checkEnum('color', op.color, COLORS); checkEnum('size', op.size, SIZES)

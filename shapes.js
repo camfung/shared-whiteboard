@@ -92,12 +92,12 @@ export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale =
   return { w, h }
 }
 
-export function buildGeo({ text = '', x = 0, y = 0, w, h, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
+export function buildGeo({ text = '', x = 0, y = 0, w, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
   const { size: s, scale } = bumpSize(size)
-  // pin height to wrapping at the caller's width when w is set but h is not
-  const fit = geoSizeForText(text, s, geo, scale, w != null && h == null ? w : null)
+  // height always auto-fits the text; when w is set, fit to the text wrapped at that width
+  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null)
   return baseShape('geo', x, y, index, {
-    w: w ?? fit.w, h: h ?? fit.h, geo, dash, growY: 0, url: '', scale,
+    w: w ?? fit.w, h: fit.h, geo, dash, growY: 0, url: '', scale,
     color, labelColor: 'black', fill, size: s, font: 'draw',
     align: 'middle', verticalAlign: 'middle', richText: richText(text),
   })

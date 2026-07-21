@@ -250,11 +250,11 @@ server.registerTool('connect', {
 }, wrap((a) => bapi('/connect', 'POST', a)))
 
 server.registerTool('update_node', {
-  description: 'Update a shape on the active board by id: text, position (x,y), size (w,h), color, fill. Pass only fields to change. Boxes auto-resize to fit their text unless you pass an explicit w or h.',
+  description: 'Update a shape on the active board by id: text, position (x,y), width (w), color, fill. Pass only fields to change. Boxes always auto-fit their height to the text (wrapped at w if you set one).',
   inputSchema: {
     id: z.string(), text: z.string().optional(),
     x: z.number().optional(), y: z.number().optional(),
-    w: z.number().optional(), h: z.number().optional(),
+    w: z.number().optional(),
     color: z.string().optional(), fill: z.string().optional(),
   },
 }, wrap((a) => bapi('/update', 'POST', a)))
@@ -299,12 +299,12 @@ server.registerTool('reflow_labels', {
 server.registerTool('apply_ops', {
   description: `Apply MANY board edits in ONE call (single transaction) — use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
 Ops:
-- {op:"node", ref?, text, x, y, w?, h?, shape?, color?, fill?}  (box auto-fits its text)
+- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?}  (box auto-fits its text; height always auto-fits)
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}
 - {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
-- {op:"update", id, text?, x?, y?, w?, h?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box re-fits text unless w/h given)
+- {op:"update", id, text?, x?, y?, w?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box height always auto-fits, re-fits to text at w if given)
 - {op:"move", id, x, y}
 - {op:"move_container", id, x?, y?, dx?, dy?}   (moves the box + everything inside it)
 - {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
