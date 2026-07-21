@@ -31117,13 +31117,12 @@ server.registerTool("check_overlap", {
   inputSchema: {}
 }, wrap(() => bapi("/overlap")));
 server.registerTool("create_node", {
-  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w/h only to force a size). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: external_exports.string(),
     x: external_exports.number(),
     y: external_exports.number(),
     w: external_exports.number().optional().describe("width; omit to auto-fit text"),
-    h: external_exports.number().optional().describe("height; omit to auto-fit text"),
     shape: external_exports.string().optional().describe("geo shape, default rectangle"),
     color: external_exports.string().optional(),
     fill: external_exports.string().optional()

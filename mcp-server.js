@@ -192,11 +192,10 @@ server.registerTool('check_overlap', {
 }, wrap(() => bapi('/overlap')))
 
 server.registerTool('create_node', {
-  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w/h only to force a size). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: z.string(), x: z.number(), y: z.number(),
     w: z.number().optional().describe('width; omit to auto-fit text'),
-    h: z.number().optional().describe('height; omit to auto-fit text'),
     shape: z.string().optional().describe('geo shape, default rectangle'),
     color: z.string().optional(), fill: z.string().optional(),
   },
