@@ -230,6 +230,17 @@ server.registerTool('create_uml', {
   },
 }, wrap((a) => bapi('/uml', 'POST', a)))
 
+server.registerTool('create_border_label', {
+  description: `Create a fieldset-style "border label" field on the active board: a rounded frame with the LABEL sitting in a real gap cut into the top stroke (like an HTML <fieldset>/<legend> or a Material outlined text field) and the VALUE inside. Great for form-field mockups, labeled value chips, or any "name : contents" pairing where the name should stay visible on the border. The box auto-sizes to the value (pass w as a minimum width); an over-long label truncates with an ellipsis to keep the gap inside the frame. The frame + label take "color"; the value renders near-white for the dark canvas. Returns the shape id. Colors: ${COLORS}. Note: rendered as an SVG image — not text-editable in the editor and does not adapt to a light theme.`,
+  inputSchema: {
+    label: z.string().describe('the legend text that sits in the gap on the top border'),
+    value: z.string().describe('the value shown inside the frame'),
+    x: z.number(), y: z.number(),
+    w: z.number().optional().describe('minimum width; the box grows to fit the value'),
+    color: z.string().optional().describe('frame + label color (default grey)'),
+  },
+}, wrap((a) => bapi('/border-label', 'POST', a)))
+
 server.registerTool('update_uml', {
   description: 'Update a UML block by id. Pass name/fields/methods/color to replace them (fields/methods replace the whole list). The block auto-resizes to fit its rows (width + height) unless you pass an explicit w. Also moves via x,y.',
   inputSchema: {
@@ -307,6 +318,14 @@ server.registerTool('space_container', {
   inputSchema: { id: z.string().describe('the container box id'), gap: z.number().optional().describe('minimum px gap (default 60)') },
 }, wrap((a) => bapi('/space', 'POST', { gap: a.gap, container: a.id })))
 
+server.registerTool('space_evenly', {
+  description: 'Distribute nodes so the GAPS between them are equal along one axis (like Figma "distribute spacing") — the two end nodes stay put and the middle ones slide until every edge-to-edge gap is identical. axis "horizontal" evens the left→right gaps (keeps each y); "vertical" evens the top→bottom gaps (keeps each x). Pass 3+ node ids. A container box carries its contents along. Use this to line up a row/column into even spacing; use space_board / space_container for collision-only spreading.',
+  inputSchema: {
+    ids: z.array(z.string()).describe('3+ node ids to distribute'),
+    axis: z.enum(['horizontal', 'vertical']).describe('"horizontal" = equalize left→right gaps; "vertical" = equalize top→bottom gaps'),
+  },
+}, wrap((a) => bapi('/distribute', 'POST', a)))
+
 server.registerTool('delete_shapes', {
   description: 'Delete shapes on the active board by id. Also removes arrows bound to them.',
   inputSchema: { ids: z.array(z.string()) },
@@ -331,11 +350,13 @@ Ops:
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}
 - {op:"svg",  ref?, svg, x, y, w?, h?, name?}   (embed SVG markup as an image; w/h default to the SVG viewBox)
+- {op:"border_label", ref?, label, value, x, y, w?, color?}   (fieldset field: label in a gap on the top border, value inside; box auto-fits the value, w = minimum width)
 - {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
 - {op:"update", id, text?, x?, y?, w?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box height always auto-fits, re-fits to text at w if given)
 - {op:"move", id, x, y}
 - {op:"move_container", id, x?, y?, dx?, dy?}   (moves the box + everything inside it)
 - {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
+- {op:"distribute", ids:[...], axis:"horizontal"|"vertical"}   (even the gaps between 3+ nodes along one axis; end nodes stay put)
 - {op:"delete", ids:[...]}
 - {op:"col"|"row", x, y, step?, items:[...], + any shared node props (w/shape/color/fill/size)}  — lay out MANY boxes in one op: from (x,y), "col" steps down y / "row" steps along x by "step" (default 50/200). Each item is a bare string (text) or {text, color?, ...} and inherits the layout op's shared props. Collapses a whole column/grid of boxes into a single op — no repeated x/op/w/fill and no hand-computed y per row.
 Top-level "defaults": an object merged UNDER every op (the op type included), so you don't repeat shared props. e.g. defaults:{op:"node",w:250,fill:"semi"} then ops:[{text:"GND",x:180,y:166,color:"grey"}, ...]. Per-op values override defaults.

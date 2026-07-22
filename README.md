@@ -181,11 +181,13 @@ Editing the active board:
 - `create_text {text,x,y,color?,size?}` → id.
 - `create_note {text,x,y,color?}` → id.
 - `create_uml {name,x,y,fields?,methods?,color?}` → id. A UML class block (title + fields + methods compartments).
+- `create_border_label {label,value,x,y,w?,color?}` → id. A fieldset-style field: the `label` sits in a real gap cut into the top border (like an HTML `<fieldset>`/`<legend>`), the `value` shows inside. Box auto-fits the value (`w` = minimum width); an over-long label truncates with an ellipsis. Frame + label take `color`; renders as an SVG image (not text-editable; tuned for the dark canvas).
 - `update_uml {id,name?,fields?,methods?,color?,x?,y?,w?}` — replace name/fields/methods.
 - `add_field {id,field}` / `add_method {id,method}` — append one row (auto-grows).
 - `create_svg {x,y,svg?,file?,w?,h?,name?}` → id. Drop an SVG onto the board as an image — pass the markup inline (`svg`) or a `.svg` path (`file`); `w`/`h` default to the SVG `viewBox`. Ideal for a skill-generated diagram (e.g. the sequence-diagram / flow-diagram skills) kept in its own house style. Renders in image mode (system fonts only — embed the font in the SVG for an exact webfont match).
 - `connect {fromId,toId,text?,color?,dashed?}` → arrow that follows the shapes.
 - `update_node {id,text?,x?,y?,w?,h?,color?,fill?}`.
+- `space_evenly {ids, axis}` — distribute 3+ nodes so the gaps between them are equal along one axis (`horizontal` evens the left→right gaps, `vertical` the top→bottom); the two end nodes stay put and a container carries its contents. Like Figma "distribute spacing". In the web UI: the `↔ even` / `↕ even` toolbar buttons act on the current selection.
 - `delete_shapes {ids}` — also removes bound arrows.
 - `clear_board` — wipe shapes/arrows (keeps the board).
 

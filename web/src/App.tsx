@@ -268,6 +268,54 @@ export default function App() {
     ed.updateShapes(rects.map(toUpdate))
   }
 
+  // "Space evenly" — distribute the SELECTED shapes so the gaps between them are
+  // equal along one axis (Figma "distribute spacing"). The two end shapes stay
+  // put; the middle ones slide. Only position changes — nothing is resized. A
+  // selected container carries its contents along by the same delta. Needs 3+
+  // top-level selected shapes. Undoable in-canvas with Ctrl/Cmd-Z.
+  const distributeSelection = (axis: 'horizontal' | 'vertical') => {
+    const ed = (window as any).editor
+    if (!ed) return
+    type R = { id: string; type: string; x: number; y: number; w: number; h: number }
+    const NODE = new Set(['geo', 'uml', 'note', 'text'])
+    const rects: R[] = ed.getCurrentPageShapes()
+      .filter((s: any) => NODE.has(s.type))
+      .map((s: any) => { const b = ed.getShapePageBounds(s.id); return b ? { id: s.id, type: s.type, x: b.x, y: b.y, w: b.w, h: b.h } : null })
+      .filter(Boolean)
+    const byId = new Map<string, R>(rects.map((r) => [r.id, r]))
+    const sel = new Set<string>(ed.getSelectedShapeIds())
+    const contains = (a: R, b: R) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5
+    const areaOf = (r: R) => r.w * r.h
+    const targets = rects.filter((r) => sel.has(r.id))
+    const top = targets.filter((t) => !targets.some((o) => contains(o, t)))
+    if (top.length < 3) { alert('Select 3+ shapes to space evenly.'); return }
+
+    const K: 'x' | 'y' = axis === 'horizontal' ? 'x' : 'y'
+    const S: 'w' | 'h' = axis === 'horizontal' ? 'w' : 'h'
+    const sorted = [...top].sort((a, b) => a[K] - b[K])
+    const first = sorted[0], last = sorted[sorted.length - 1]
+    const span = (last[K] + last[S]) - first[K]
+    const totalSize = sorted.reduce((s, r) => s + r[S], 0)
+    const gap = (span - totalSize) / (sorted.length - 1)
+
+    const delta = new Map<string, number>()
+    let cursor = first[K]
+    for (const r of sorted) { delta.set(r.id, cursor - r[K]); cursor += r[S] + gap }
+
+    // propagate each top-level target's delta to the shapes inside it
+    const moveById = new Map(delta)
+    for (const r of rects) {
+      if (moveById.has(r.id)) continue
+      let host: R | null = null
+      for (const t of sorted) if (contains(t, r) && (!host || areaOf(t) < areaOf(host))) host = t
+      if (host) moveById.set(r.id, delta.get(host.id) as number)
+    }
+
+    const updates: any[] = []
+    for (const [id, d] of moveById) { if (!d) continue; const r = byId.get(id) as R; updates.push({ id, type: r.type, [K]: Math.round(r[K] + d) }) }
+    if (updates.length) ed.updateShapes(updates)
+  }
+
   const saveTemplate = async () => {
     const ed = (window as any).editor
     if (!ed) return
@@ -392,6 +440,8 @@ export default function App() {
         <span style={{ width: 1, height: 20, background: p.sep }} />
         <button style={btn} onClick={addUml} disabled={!current}>＋ UML</button>
         <button style={btn} onClick={spaceNodes} disabled={!current} title="Space nodes apart to a minimum gap — selected shapes, or all nodes (container frames stay put)">⇔ space</button>
+        <button style={btn} onClick={() => distributeSelection('horizontal')} disabled={!current} title="Space selected shapes evenly left→right — equal gaps, end shapes stay put (needs 3+)">↔ even</button>
+        <button style={btn} onClick={() => distributeSelection('vertical')} disabled={!current} title="Space selected shapes evenly top→bottom — equal gaps, end shapes stay put (needs 3+)">↕ even</button>
         <span style={{ width: 1, height: 20, background: p.sep }} />
         <button style={btn} onClick={saveTemplate} disabled={!current} title="Save selected shapes as a reusable template">💾 save tmpl</button>
         <select

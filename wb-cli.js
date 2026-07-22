@@ -220,6 +220,7 @@ const cmds = {
     text: (f) => bapi('/text', 'POST', pick(f, ['text', 'x', 'y', 'color', 'size']), f),
     note: (f) => bapi('/note', 'POST', pick(f, ['text', 'x', 'y', 'color']), f),
     uml: (f) => bapi('/uml', 'POST', pick(f, ['name', 'x', 'y', 'fields', 'methods', 'color']), f),
+    'border-label': (f) => bapi('/border-label', 'POST', pick(f, ['label', 'value', 'x', 'y', 'w', 'color']), f),
   },
 
   edit: {
@@ -231,6 +232,8 @@ const cmds = {
     move: (f) => bapi('/move-container', 'POST', pick(f, ['id', 'x', 'y', 'dx', 'dy']), f),
     // whole board, or scoped to a container when --id is given
     space: (f) => bapi('/space', 'POST', { ...(f.gap != null ? { gap: f.gap } : {}), ...(f.id ? { container: f.id } : {}) }, f),
+    // Distribute 3+ nodes so the gaps between them are equal along one axis.
+    even: (f) => bapi('/distribute', 'POST', { ids: f.ids, axis: f.axis || 'horizontal' }, f),
     delete: (f) => bapi('/delete', 'POST', pick(f, ['ids']), f),
     clear: (f) => bapi('/clear', 'POST', {}, f),
     reflow: (f) => bapi('/reflow-labels', 'POST', {}, f),
@@ -331,6 +334,7 @@ create — create shapes
   create text    --text .. --x .. --y .. [--color --size]
   create note    --text .. --x .. --y .. [--color]
   create uml     --name .. --x .. --y .. [--fields '[..]' --methods '[..]' --color]
+  create border-label --label .. --value .. --x .. --y .. [--w --color]
 
 edit — edit the active board
   edit node      --id .. [--text --x --y --w --color --fill --nowrap]

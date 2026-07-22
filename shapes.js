@@ -126,7 +126,7 @@ export function buildText({ text = '', x = 0, y = 0, color = 'black', size = 'm'
 // hooks (onBeforeCreate/onBeforeUpdate) never run on records we inject into the
 // sync store, so we measure the text and set both meta.w and growY here.
 const NOTE_SIZE = 200                                    // base width & height
-const NOTE_MAX_W = 520                                   // widen up to here, then wrap down
+const NOTE_MAX_W = 900                                   // widen up to here, then wrap down
 const NOTE_LABEL_FONT = { s: 18, m: 22, l: 26, xl: 32 }  // theme.fontSize(16) * LABEL_FONT_SIZES
 const NOTE_LINE_HEIGHT = 1.35                            // theme.lineHeight
 const NOTE_PADDING = 16                                  // LABEL_PADDING
@@ -231,6 +231,85 @@ export function buildSvg({ svg, x = 0, y = 0, w, h, name = 'diagram.svg', index 
     crop: null, flipX: false, flipY: false, altText: '',
   })
   return { asset, shape }
+}
+
+// Fieldset-style "border label" field: a rounded frame with the LABEL sitting in
+// a real gap cut into the top stroke (like HTML <fieldset>/<legend>) and the
+// VALUE inside. Rendered as an SVG image (reuses buildSvg), so it needs no client
+// shape-util or sync-schema change. Monospace metrics size the box to the value,
+// truncate an over-long label to keep the gap inside the frame, and truncate an
+// over-long value with an ellipsis. w is a MINIMUM width; the box grows to fit
+// the value up to BL_MAX_W. Returns { asset, shape } — put BOTH (asset first).
+// Colors are baked (an image can't read the board theme): the frame + label take
+// `color`, the value stays near-white for the dark canvas this board uses.
+const BL_HEX = {
+  grey: '#a9b0b8', black: '#d7dbe0', blue: '#6b8cff', 'light-blue': '#63b3ed',
+  green: '#7cc47c', 'light-green': '#9ad19a', red: '#e06a6a', 'light-red': '#e89a9a',
+  orange: '#e0975a', yellow: '#d8c25a', violet: '#b48cff', 'light-violet': '#cbb4ff',
+}
+const BL_LABEL_FS = 15
+const BL_VALUE_FS = 24
+const BL_CHAR = 0.6                 // monospace advance factor (matches SVG font)
+const BL_PAD_L = 28
+const BL_PAD_R = 22
+const BL_MIN_W = 160
+const BL_MAX_W = 680
+const BL_H = 96
+const BL_Y0 = 14                    // top stroke (label rides this line)
+const BL_R = 14                     // corner radius
+const BL_SW = 2.5                   // stroke width
+const BL_GAP_X = 22                 // gap starts this far from the left corner
+const BL_MIN_RSEG = 26              // min visible top-border segment right of the gap
+
+const xmlEsc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const clip = (s, max) => (s.length > max ? s.slice(0, Math.max(1, max - 1)) + '…' : s)
+
+export function buildBorderLabel({ label = '', value = '', x = 0, y = 0, w, color = 'grey', index }) {
+  const labelCW = BL_LABEL_FS * BL_CHAR
+  const valueCW = BL_VALUE_FS * BL_CHAR
+  const Y1 = BL_H - 10
+
+  const valStr = String(value ?? '')
+  // width fits the value on one line, honors w as a minimum, clamped to BL_MAX_W
+  const W = Math.min(BL_MAX_W, Math.max(BL_MIN_W, w ? Math.round(w) : 0, Math.ceil(valStr.length * valueCW) + BL_PAD_L + BL_PAD_R))
+
+  const valMax = Math.max(1, Math.floor((W - BL_PAD_L - BL_PAD_R) / valueCW))
+  const value2 = xmlEsc(clip(valStr, valMax))
+
+  // label must fit the top edge and always leave a visible top-right segment
+  // (BL_MIN_RSEG) so the gap never swallows the whole top border
+  const rightStop = W - BL_R - BL_MIN_RSEG
+  const lblMax = Math.max(1, Math.floor((rightStop - BL_GAP_X - 8) / labelCW))
+  const label2 = xmlEsc(clip(String(label ?? ''), lblMax))
+  const gapW = Math.ceil(label2.length * labelCW) + 12
+  const gx1 = Math.min(rightStop, BL_GAP_X + gapW)
+
+  const stroke = BL_HEX[color] || BL_HEX.grey
+  const labelBase = BL_Y0 + BL_LABEL_FS * 0.34
+  const valueBase = (BL_Y0 + Y1) / 2 + BL_VALUE_FS * 0.34
+
+  // rounded frame with a gap in the top edge between BL_GAP_X and gx1
+  const path = [
+    `M ${gx1} ${BL_Y0}`,
+    `L ${W - BL_SW - BL_R} ${BL_Y0}`,
+    `A ${BL_R} ${BL_R} 0 0 1 ${W - BL_SW} ${BL_Y0 + BL_R}`,
+    `L ${W - BL_SW} ${Y1 - BL_R}`,
+    `A ${BL_R} ${BL_R} 0 0 1 ${W - BL_SW - BL_R} ${Y1}`,
+    `L ${BL_SW + BL_R} ${Y1}`,
+    `A ${BL_R} ${BL_R} 0 0 1 ${BL_SW} ${Y1 - BL_R}`,
+    `L ${BL_SW} ${BL_Y0 + BL_R}`,
+    `A ${BL_R} ${BL_R} 0 0 1 ${BL_SW + BL_R} ${BL_Y0}`,
+    `L ${BL_GAP_X} ${BL_Y0}`,
+  ].join(' ')
+
+  const FONT = "ui-monospace,'DejaVu Sans Mono',monospace"
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${BL_H}">
+  <path d="${path}" fill="none" stroke="${stroke}" stroke-width="${BL_SW}" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="${BL_GAP_X + 8}" y="${labelBase}" font-family="${FONT}" font-size="${BL_LABEL_FS}" fill="${stroke}">${label2}</text>
+  <text x="${BL_PAD_L}" y="${valueBase}" font-family="${FONT}" font-size="${BL_VALUE_FS}" fill="#ededed">${value2}</text>
+</svg>`
+
+  return buildSvg({ svg, x, y, w: W, h: BL_H, name: 'border-label.svg', index })
 }
 
 export function buildArrowBinding({ arrowId, shapeId, terminal }) {

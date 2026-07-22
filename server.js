@@ -12,7 +12,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import {
-  buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml, buildSvg,
+  buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml, buildSvg, buildBorderLabel,
   geoSizeForText, noteBox, richText, nextIndex, COLORS, FILLS, GEO, SIZES,
 } from './shapes.js'
 import { umlHeight, umlWidth } from './uml-schema.js'
@@ -447,6 +447,59 @@ function spaceLayout(store, gap, containerId) {
   return affected.size
 }
 
+// Distribute a set of nodes so the GAPS between them are equal along one axis
+// (like Figma "distribute spacing"). The two end nodes stay put; the middle
+// ones slide so every edge-to-edge gap is identical. Only position changes —
+// nothing is resized. A container among the ids carries its geometric contents
+// along by the same delta (contents needn't be in `ids`). Requires 3+ top-level
+// targets (nested selections collapse to their outermost container).
+function distributeEvenly(store, ids, axis) {
+  if (axis !== 'horizontal' && axis !== 'vertical') throw new Error(`axis must be "horizontal" or "vertical" (got "${axis}")`)
+  const NODE = new Set(['geo', 'uml', 'note', 'text'])
+  const rects = store.getAll()
+    .filter((r) => r.typeName === 'shape' && NODE.has(r.type) && r.props?.w != null)
+    .map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }))
+  const byId = new Map(rects.map((r) => [r.id, r]))
+  const targets = [...new Set(ids)].map((id) => byId.get(id)).filter(Boolean)
+  const areaOf = (r) => r.w * r.h
+  const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5
+  // top-level targets: a target not contained by another target
+  const top = targets.filter((t) => !targets.some((o) => contains(o, t)))
+  if (top.length < 3) return 0
+
+  const K = axis === 'horizontal' ? 'x' : 'y'
+  const S = axis === 'horizontal' ? 'w' : 'h'
+  const sorted = [...top].sort((a, b) => a[K] - b[K])
+  const first = sorted[0], last = sorted[sorted.length - 1]
+  const span = (last[K] + last[S]) - first[K]
+  const totalSize = sorted.reduce((s, r) => s + r[S], 0)
+  const gap = (span - totalSize) / (sorted.length - 1)
+
+  const delta = new Map()
+  let cursor = first[K]
+  for (const r of sorted) { delta.set(r.id, cursor - r[K]); cursor += r[S] + gap }
+
+  // each top-level target's delta propagates to the node shapes inside it
+  // (smallest containing target wins if a shape sits in more than one)
+  const moveById = new Map(delta)
+  for (const r of rects) {
+    if (moveById.has(r.id)) continue
+    let host = null
+    for (const t of sorted) if (contains(t, r) && (!host || areaOf(t) < areaOf(host))) host = t
+    if (host) moveById.set(r.id, delta.get(host.id))
+  }
+
+  let touched = 0
+  for (const [id, d] of moveById) {
+    if (!d) continue // end nodes (and their contents) don't move
+    const rec = store.get(id)
+    if (!rec) continue
+    store.put({ ...rec, [K]: Math.round(rec[K] + d) })
+    touched++
+  }
+  return touched
+}
+
 // Nudge each arrow's label along its arrow so it doesn't sit on top of node
 // boxes. Pure heuristic: it approximates every arrow as a straight line between
 // the CENTERS of its two bound shapes and ignores tldraw's actual curve. The
@@ -673,6 +726,12 @@ const server = http.createServer(async (req, res) => {
         await put(room, rec)
         return json(res, 200, { id: rec.id })
       }
+      if (p === '/border-label') {
+        checkEnum('color', b.color, COLORS)
+        const { asset, shape } = buildBorderLabel({ label: b.label, value: b.value, x: b.x ?? 0, y: b.y ?? 0, w: b.w, color: b.color, index: nextIndex(shapeIndexKeys(room)) })
+        await put(room, asset, shape)
+        return json(res, 200, { id: shape.id })
+      }
       if (p === '/uml') {
         checkEnum('color', b.color, COLORS)
         const rec = buildUml({
@@ -727,6 +786,15 @@ const server = http.createServer(async (req, res) => {
         })
         return json(res, 200, { touched, gap, ...(b.container ? { container: b.container } : {}) })
       }
+      if (p === '/distribute') {
+        if (!Array.isArray(b.ids)) throw new Error('distribute needs an "ids" array')
+        let touched = 0
+        await room.updateStore((store) => {
+          touched = distributeEvenly(store, b.ids, b.axis)
+          reflowArrowLabels(store)
+        })
+        return json(res, 200, { touched, axis: b.axis })
+      }
       if (p === '/delete') {
         const ids = Array.isArray(b.ids) ? b.ids : b.id ? [b.id] : []
         await room.updateStore((store) => {
@@ -777,6 +845,11 @@ const server = http.createServer(async (req, res) => {
               const { asset, shape } = buildSvg({ svg: op.svg, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, name: op.name, index: takeIdx() })
               store.put(asset); store.put(shape)
               if (op.ref) refs[op.ref] = shape.id
+            } else if (k === 'border_label') {
+              checkEnum('color', op.color, COLORS)
+              const { asset, shape } = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() })
+              store.put(asset); store.put(shape)
+              if (op.ref) refs[op.ref] = shape.id
             } else if (k === 'connect') {
               checkEnum('color', op.color, COLORS)
               const from = rid(op.from ?? op.fromId), to = rid(op.to ?? op.toId)
@@ -792,13 +865,15 @@ const server = http.createServer(async (req, res) => {
               applyMoveContainer(store, { ...op, id: rid(op.id) })
             } else if (k === 'space') {
               spaceLayout(store, Number.isFinite(op.gap) ? op.gap : 60, op.container ? rid(op.container) : undefined)
+            } else if (k === 'distribute') {
+              distributeEvenly(store, (Array.isArray(op.ids) ? op.ids : []).map(rid), op.axis)
             } else if (k === 'delete') {
               const ids = (Array.isArray(op.ids) ? op.ids : [op.id]).map(rid)
               const idSet = new Set(ids)
               for (const r of store.getAll()) if (r.typeName === 'binding' && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id)
               for (const id of ids) store.delete(id)
             } else {
-              throw new Error(`unknown op "${k}" (use node|text|note|uml|svg|connect|update|move|delete)`)
+              throw new Error(`unknown op "${k}" (use node|text|note|uml|svg|border_label|connect|update|move|move_container|space|distribute|delete)`)
             }
           }
           reflowArrowLabels(store)
