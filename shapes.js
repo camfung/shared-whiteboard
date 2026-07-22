@@ -71,36 +71,44 @@ const GEO_PAD_Y = 24    // total vertical label padding
 // When targetW is given, height is sized to the text *wrapped* at that width
 // (the box is pinned wide, so a long single line becomes several visual rows) —
 // otherwise the box grows wide enough that no wrapping happens.
-export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale = 1, targetW = null) {
+export function geoSizeForText(text = '', size = 'm', geo = 'rectangle', scale = 1, targetW = null, nowrap = false) {
   const fs = (FONT_SIZES[size] || 24) * (scale || 1)
   const charW = fs * GEO_CHAR
   const lines = String(text || '').split('\n')
   const maxLen = Math.max(1, ...lines.map((l) => l.length))
   // non-rectangular shapes (ellipse/diamond/…) need extra room for the label
   const roomy = geo === 'rectangle' ? 1 : 1.4
-  const w = targetW != null
-    ? Math.max(80, targetW)
-    : Math.round(Math.max(80, maxLen * charW + GEO_PAD_X) * roomy)
-  // rows = wrapped line count at the effective text width (single line if unpinned)
-  let rows = lines.length
-  if (targetW != null) {
+  // width that fits the longest line on a single line (no wrapping)
+  const fitW = Math.round(Math.max(80, maxLen * charW + GEO_PAD_X) * roomy)
+  let w, rows
+  if (targetW != null && !nowrap) {
+    // pinned width: text wraps to fit, height grows with the wrapped row count
+    w = Math.max(80, targetW)
     const avail = Math.max(charW, w / roomy - GEO_PAD_X)
     const cpl = Math.max(1, Math.floor(avail / charW))
     rows = lines.reduce((n, l) => n + wrappedLines(l, cpl), 0)
+  } else {
+    // no wrap: fit the text on one line; a given targetW is treated as a minimum width
+    w = targetW != null ? Math.max(fitW, targetW) : fitW
+    rows = lines.length
   }
   const h = Math.round(Math.max(48, rows * fs * GEO_LINE + GEO_PAD_Y) * roomy)
   return { w, h }
 }
 
-export function buildGeo({ text = '', x = 0, y = 0, w, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', index }) {
+export function buildGeo({ text = '', x = 0, y = 0, w, geo = 'rectangle', color = 'black', fill = 'none', dash = 'draw', size = 'm', nowrap = false, index }) {
   const { size: s, scale } = bumpSize(size)
-  // height always auto-fits the text; when w is set, fit to the text wrapped at that width
-  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null)
-  return baseShape('geo', x, y, index, {
-    w: w ?? fit.w, h: fit.h, geo, dash, growY: 0, url: '', scale,
+  // height always auto-fits the text. With w set: fit to the text wrapped at that
+  // width — unless nowrap, where w is a minimum and the box widens to keep one line.
+  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null, nowrap)
+  const shape = baseShape('geo', x, y, index, {
+    w: fit.w, h: fit.h, geo, dash, growY: 0, url: '', scale,
     color, labelColor: 'black', fill, size: s, font: 'draw',
     align: 'middle', verticalAlign: 'middle', richText: richText(text),
   })
+  // persist nowrap so a later text edit (update) keeps honoring single-line width
+  if (nowrap) shape.meta = { nowrap: true }
+  return shape
 }
 
 export function buildText({ text = '', x = 0, y = 0, color = 'black', size = 'm', index }) {

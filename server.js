@@ -326,10 +326,14 @@ function applyUpdate(store, b) {
     // height always auto-fits: keep the effective width (caller's new w, else the
     // box's current w) and refit height to the text wrapped at that width, so an
     // in-place text edit never overflows and never explodes the author's layout.
+    // nowrap boxes keep single-line width (their stored w is the floor); b.nowrap
+    // may flip the flag on an existing box.
+    const nowrap = b.nowrap != null ? !!b.nowrap : next.meta?.nowrap === true
     const targetW = b.w != null ? b.w : next.props.w
-    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale, targetW)
+    const fit = geoSizeForText(extractText(next.props) || '', next.props.size, next.props.geo, next.props.scale, targetW, nowrap)
     next.props.w = fit.w
     next.props.h = fit.h
+    if (b.nowrap != null) next.meta = nowrap ? { ...next.meta, nowrap: true } : (() => { const m = { ...next.meta }; delete m.nowrap; return m })()
   }
   if (rec.type === 'uml') {
     next.props.h = umlHeight(next.props.fields, next.props.methods)
@@ -653,7 +657,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/node') {
         checkEnum('color', b.color, COLORS); checkEnum('fill', b.fill, FILLS)
         checkEnum('shape', b.shape, GEO); checkEnum('size', b.size, SIZES)
-        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) })
+        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, nowrap: b.nowrap, index: nextIndex(shapeIndexKeys(room)) })
         await put(room, rec)
         return json(res, 200, { id: rec.id })
       }
@@ -754,7 +758,7 @@ const server = http.createServer(async (req, res) => {
             const k = op.op
             if (k === 'node') {
               checkEnum('color', op.color, COLORS); checkEnum('fill', op.fill, FILLS); checkEnum('shape', op.shape, GEO); checkEnum('size', op.size, SIZES)
-              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() })
+              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, nowrap: op.nowrap, index: takeIdx() })
               store.put(rec); if (op.ref) refs[op.ref] = rec.id
             } else if (k === 'text') {
               checkEnum('color', op.color, COLORS); checkEnum('size', op.size, SIZES)

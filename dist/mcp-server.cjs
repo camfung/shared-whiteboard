@@ -31125,15 +31125,16 @@ server.registerTool("check_overlap", {
   inputSchema: {}
 }, wrap(() => bapi("/overlap")));
 server.registerTool("create_node", {
-  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). By default text wraps to w; pass nowrap to keep it on one line \u2014 then w is a minimum width and the box widens to fit long text. Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: external_exports.string(),
     x: external_exports.number(),
     y: external_exports.number(),
-    w: external_exports.number().optional().describe("width; omit to auto-fit text"),
+    w: external_exports.number().optional().describe("width; omit to auto-fit text. With nowrap, acts as a minimum width"),
     shape: external_exports.string().optional().describe("geo shape, default rectangle"),
     color: external_exports.string().optional(),
-    fill: external_exports.string().optional()
+    fill: external_exports.string().optional(),
+    nowrap: external_exports.boolean().optional().describe("never wrap the label \u2014 box stays one line and widens to fit; w becomes a minimum width")
   }
 }, wrap((a) => bapi("/node", "POST", a)));
 server.registerTool("create_text", {
@@ -31199,7 +31200,7 @@ server.registerTool("connect", {
   inputSchema: { fromId: external_exports.string(), toId: external_exports.string(), text: external_exports.string().optional(), color: external_exports.string().optional(), dashed: external_exports.boolean().optional() }
 }, wrap((a) => bapi("/connect", "POST", a)));
 server.registerTool("update_node", {
-  description: "Update a shape on the active board by id: text, position (x,y), width (w), color, fill. Pass only fields to change. Boxes always auto-fit their height to the text (wrapped at w if you set one).",
+  description: "Update a shape on the active board by id: text, position (x,y), width (w), color, fill. Pass only fields to change. Boxes always auto-fit their height to the text (wrapped at w if you set one). Pass nowrap to toggle single-line width on a box; a nowrap box keeps its width as a floor and widens to fit long text instead of wrapping.",
   inputSchema: {
     id: external_exports.string(),
     text: external_exports.string().optional(),
@@ -31207,7 +31208,8 @@ server.registerTool("update_node", {
     y: external_exports.number().optional(),
     w: external_exports.number().optional(),
     color: external_exports.string().optional(),
-    fill: external_exports.string().optional()
+    fill: external_exports.string().optional(),
+    nowrap: external_exports.boolean().optional().describe("true = never wrap (widen to fit, w is a floor); false = clear nowrap and wrap at w")
   }
 }, wrap((a) => bapi("/update", "POST", a)));
 server.registerTool("move_container", {
@@ -31243,7 +31245,7 @@ server.registerTool("reflow_labels", {
 server.registerTool("apply_ops", {
   description: `Apply MANY board edits in ONE call (single transaction) \u2014 use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
 Ops:
-- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?}  (box auto-fits its text; height always auto-fits)
+- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?, nowrap?}  (box auto-fits its text; height always auto-fits; nowrap keeps one line + makes w a minimum width)
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}

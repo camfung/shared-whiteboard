@@ -199,12 +199,13 @@ server.registerTool('check_overlap', {
 }, wrap(() => bapi('/overlap')))
 
 server.registerTool('create_node', {
-  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). By default text wraps to w; pass nowrap to keep it on one line — then w is a minimum width and the box widens to fit long text. Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: z.string(), x: z.number(), y: z.number(),
-    w: z.number().optional().describe('width; omit to auto-fit text'),
+    w: z.number().optional().describe('width; omit to auto-fit text. With nowrap, acts as a minimum width'),
     shape: z.string().optional().describe('geo shape, default rectangle'),
     color: z.string().optional(), fill: z.string().optional(),
+    nowrap: z.boolean().optional().describe('never wrap the label — box stays one line and widens to fit; w becomes a minimum width'),
   },
 }, wrap((a) => bapi('/node', 'POST', a)))
 
@@ -275,12 +276,13 @@ server.registerTool('connect', {
 }, wrap((a) => bapi('/connect', 'POST', a)))
 
 server.registerTool('update_node', {
-  description: 'Update a shape on the active board by id: text, position (x,y), width (w), color, fill. Pass only fields to change. Boxes always auto-fit their height to the text (wrapped at w if you set one).',
+  description: 'Update a shape on the active board by id: text, position (x,y), width (w), color, fill. Pass only fields to change. Boxes always auto-fit their height to the text (wrapped at w if you set one). Pass nowrap to toggle single-line width on a box; a nowrap box keeps its width as a floor and widens to fit long text instead of wrapping.',
   inputSchema: {
     id: z.string(), text: z.string().optional(),
     x: z.number().optional(), y: z.number().optional(),
     w: z.number().optional(),
     color: z.string().optional(), fill: z.string().optional(),
+    nowrap: z.boolean().optional().describe('true = never wrap (widen to fit, w is a floor); false = clear nowrap and wrap at w'),
   },
 }, wrap((a) => bapi('/update', 'POST', a)))
 
@@ -324,7 +326,7 @@ server.registerTool('reflow_labels', {
 server.registerTool('apply_ops', {
   description: `Apply MANY board edits in ONE call (single transaction) — use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
 Ops:
-- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?}  (box auto-fits its text; height always auto-fits)
+- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?, nowrap?}  (box auto-fits its text; height always auto-fits; nowrap keeps one line + makes w a minimum width)
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}

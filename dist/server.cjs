@@ -7733,27 +7733,31 @@ var GEO_CHAR = 0.62;
 var GEO_LINE = 1.4;
 var GEO_PAD_X = 32;
 var GEO_PAD_Y = 24;
-function geoSizeForText(text = "", size = "m", geo = "rectangle", scale = 1, targetW = null) {
+function geoSizeForText(text = "", size = "m", geo = "rectangle", scale = 1, targetW = null, nowrap = false) {
   const fs4 = (FONT_SIZES[size] || 24) * (scale || 1);
   const charW = fs4 * GEO_CHAR;
   const lines = String(text || "").split("\n");
   const maxLen = Math.max(1, ...lines.map((l) => l.length));
   const roomy = geo === "rectangle" ? 1 : 1.4;
-  const w = targetW != null ? Math.max(80, targetW) : Math.round(Math.max(80, maxLen * charW + GEO_PAD_X) * roomy);
-  let rows = lines.length;
-  if (targetW != null) {
+  const fitW = Math.round(Math.max(80, maxLen * charW + GEO_PAD_X) * roomy);
+  let w, rows;
+  if (targetW != null && !nowrap) {
+    w = Math.max(80, targetW);
     const avail = Math.max(charW, w / roomy - GEO_PAD_X);
     const cpl = Math.max(1, Math.floor(avail / charW));
     rows = lines.reduce((n, l) => n + wrappedLines(l, cpl), 0);
+  } else {
+    w = targetW != null ? Math.max(fitW, targetW) : fitW;
+    rows = lines.length;
   }
   const h = Math.round(Math.max(48, rows * fs4 * GEO_LINE + GEO_PAD_Y) * roomy);
   return { w, h };
 }
-function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", index: index2 }) {
+function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", nowrap = false, index: index2 }) {
   const { size: s, scale } = bumpSize(size);
-  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null);
-  return baseShape("geo", x, y, index2, {
-    w: w ?? fit.w,
+  const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null, nowrap);
+  const shape = baseShape("geo", x, y, index2, {
+    w: fit.w,
     h: fit.h,
     geo,
     dash,
@@ -7769,6 +7773,8 @@ function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "blac
     verticalAlign: "middle",
     richText: richText(text)
   });
+  if (nowrap) shape.meta = { nowrap: true };
+  return shape;
 }
 function buildText({ text = "", x = 0, y = 0, color = "black", size = "m", index: index2 }) {
   const { size: s, scale } = bumpSize(size);
@@ -18078,10 +18084,16 @@ function applyUpdate(store, b) {
   if (Array.isArray(b.fields) && "fields" in next.props) next.props.fields = b.fields.map(String);
   if (Array.isArray(b.methods) && "methods" in next.props) next.props.methods = b.methods.map(String);
   if (rec.type === "geo") {
+    const nowrap = b.nowrap != null ? !!b.nowrap : next.meta?.nowrap === true;
     const targetW = b.w != null ? b.w : next.props.w;
-    const fit = geoSizeForText(extractText(next.props) || "", next.props.size, next.props.geo, next.props.scale, targetW);
+    const fit = geoSizeForText(extractText(next.props) || "", next.props.size, next.props.geo, next.props.scale, targetW, nowrap);
     next.props.w = fit.w;
     next.props.h = fit.h;
+    if (b.nowrap != null) next.meta = nowrap ? { ...next.meta, nowrap: true } : (() => {
+      const m = { ...next.meta };
+      delete m.nowrap;
+      return m;
+    })();
   }
   if (rec.type === "uml") {
     next.props.h = umlHeight(next.props.fields, next.props.methods);
@@ -18401,7 +18413,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
         checkEnum("fill", b.fill, FILLS);
         checkEnum("shape", b.shape, GEO);
         checkEnum("size", b.size, SIZES);
-        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, index: nextIndex(shapeIndexKeys(room)) });
+        const rec = buildGeo({ text: b.text, x: b.x ?? 0, y: b.y ?? 0, w: b.w, geo: b.shape, color: b.color, fill: b.fill, size: b.size, nowrap: b.nowrap, index: nextIndex(shapeIndexKeys(room)) });
         await put(room, rec);
         return json(res, 200, { id: rec.id });
       }
@@ -18519,7 +18531,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
               checkEnum("fill", op.fill, FILLS);
               checkEnum("shape", op.shape, GEO);
               checkEnum("size", op.size, SIZES);
-              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, index: takeIdx() });
+              const rec = buildGeo({ text: op.text, x: op.x ?? 0, y: op.y ?? 0, w: op.w, geo: op.shape, color: op.color, fill: op.fill, size: op.size, nowrap: op.nowrap, index: takeIdx() });
               store.put(rec);
               if (op.ref) refs[op.ref] = rec.id;
             } else if (k === "text") {

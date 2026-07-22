@@ -216,14 +216,14 @@ const cmds = {
   },
 
   create: {
-    node: (f) => bapi('/node', 'POST', pick(f, ['text', 'x', 'y', 'w', 'shape', 'color', 'fill']), f),
+    node: (f) => bapi('/node', 'POST', pick(f, ['text', 'x', 'y', 'w', 'shape', 'color', 'fill', 'nowrap']), f),
     text: (f) => bapi('/text', 'POST', pick(f, ['text', 'x', 'y', 'color', 'size']), f),
     note: (f) => bapi('/note', 'POST', pick(f, ['text', 'x', 'y', 'color']), f),
     uml: (f) => bapi('/uml', 'POST', pick(f, ['name', 'x', 'y', 'fields', 'methods', 'color']), f),
   },
 
   edit: {
-    node: (f) => bapi('/update', 'POST', pick(f, ['id', 'text', 'x', 'y', 'w', 'color', 'fill']), f),
+    node: (f) => bapi('/update', 'POST', pick(f, ['id', 'text', 'x', 'y', 'w', 'color', 'fill', 'nowrap']), f),
     uml: (f) => bapi('/update', 'POST', pick(f, ['id', 'name', 'fields', 'methods', 'color', 'x', 'y', 'w']), f),
     field: (f) => bapi('/uml/add', 'POST', pick(f, ['id', 'field']), f),
     method: (f) => bapi('/uml/add', 'POST', pick(f, ['id', 'method']), f),
@@ -327,13 +327,13 @@ read — read the active board
   read overlap                                                      layout-quality check
 
 create — create shapes
-  create node    --text .. --x .. --y .. [--w --shape --color --fill]
+  create node    --text .. --x .. --y .. [--w --shape --color --fill --nowrap]
   create text    --text .. --x .. --y .. [--color --size]
   create note    --text .. --x .. --y .. [--color]
   create uml     --name .. --x .. --y .. [--fields '[..]' --methods '[..]' --color]
 
 edit — edit the active board
-  edit node      --id .. [--text --x --y --w --color --fill]
+  edit node      --id .. [--text --x --y --w --color --fill --nowrap]
   edit uml       --id .. [--name --fields --methods --color --x --y --w]
   edit field     --id .. --field ".."
   edit method    --id .. --method ".."
