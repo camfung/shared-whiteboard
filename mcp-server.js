@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import * as ledger from './ledger.js'
 
 const BASE = process.env.WB_URL || 'http://127.0.0.1:5858'
 const DIR = path.dirname(fileURLToPath(import.meta.url))
@@ -100,6 +101,43 @@ const GEOS = 'rectangle, ellipse, diamond, triangle, hexagon, cloud, star, oval,
 const FILLS = 'none, semi, solid, pattern'
 
 const server = new McpServer({ name: 'shared-whiteboard', version: '0.2.0' })
+
+// ---- usage ledger --------------------------------------------------------
+// A random per-process id so the ledger can group calls by MCP session.
+const SESSION = `sess-${Math.random().toString(36).slice(2, 10)}`
+
+// Instrument EVERY registered tool: wrap the handler so each call is timed and,
+// when recording is on (toggled from `wb ledger on/off`), one line is appended to
+// the usage ledger — tool name, ok/err, latency, and arg/result byte sizes (args
+// summarized, never stored raw). Done once here instead of per tool. The handlers
+// are built by wrap() and never throw, so no try/catch is needed; ledger.record
+// swallows its own errors so recording can't break a tool call.
+const _registerTool = server.registerTool.bind(server)
+server.registerTool = (name, def, handler) =>
+  _registerTool(name, def, async (args, extra) => {
+    const start = Date.now()
+    const result = await handler(args, extra)
+    if (ledger.isEnabled()) {
+      const failed = result?.isError === true
+      const resText = (result?.content || []).map((c) => c.text || '').join('')
+      const a = args || {}
+      ledger.record({
+        ts: start,
+        iso: new Date(start).toISOString(),
+        session: SESSION,
+        tool: name,
+        ok: !failed,
+        ms: Date.now() - start,
+        argKeys: Object.keys(a),
+        argBytes: Buffer.byteLength(JSON.stringify(a) || ''),
+        resBytes: Buffer.byteLength(resText),
+        board: current?.id || null,
+        ...(Array.isArray(a.ops) ? { opsCount: a.ops.length } : {}),
+        ...(failed ? { error: resText.slice(0, 300) } : {}),
+      })
+    }
+    return result
+  })
 
 // ---- boards ----
 server.registerTool('list_boards', {

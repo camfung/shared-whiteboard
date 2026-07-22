@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6876,12 +6876,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7248,8 +7248,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7364,11 +7364,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -11288,10 +11288,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11700,11 +11700,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -11851,16 +11851,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path2 = []) => {
+  const processError = (error52, path4 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -11887,17 +11887,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path2 = []) => {
+  const processError = (error52, path4 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -11929,8 +11929,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path2 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path2) {
+  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path4) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -25055,13 +25055,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path2 = ref.slice(1).split("/").filter(Boolean);
-  if (path2.length === 0) {
+  const path4 = ref.slice(1).split("/").filter(Boolean);
+  if (path4.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path2[0] === defsKey) {
-    const key = path2[1];
+  if (path4[0] === defsKey) {
+    const key = path4[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -30954,12 +30954,56 @@ var StdioServerTransport = class {
 
 // mcp-server.js
 var import_node_child_process = require("node:child_process");
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
+var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_path3 = __toESM(require("node:path"), 1);
 var import_node_url = require("node:url");
+
+// ledger.js
+var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path2 = __toESM(require("node:path"), 1);
+
+// data-dir.js
+var import_node_os = __toESM(require("node:os"), 1);
+var import_node_path = __toESM(require("node:path"), 1);
+var DATA_DIR = process.env.WB_DATA_DIR || import_node_path.default.join(import_node_os.default.homedir(), ".shared-whiteboard");
+
+// ledger.js
+var LEDGER_DIR = process.env.WB_LEDGER_DIR || import_node_path2.default.join(DATA_DIR, "ledger");
+var CONFIG_FILE = import_node_path2.default.join(LEDGER_DIR, "config.json");
+var EVENTS_FILE = import_node_path2.default.join(LEDGER_DIR, "events.jsonl");
+function readConfig() {
+  try {
+    return JSON.parse(import_node_fs.default.readFileSync(CONFIG_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+var _cache = { mtimeMs: -1, enabled: false };
+function isEnabled() {
+  try {
+    const st = import_node_fs.default.statSync(CONFIG_FILE);
+    if (st.mtimeMs !== _cache.mtimeMs) _cache = { mtimeMs: st.mtimeMs, enabled: !!readConfig().enabled };
+    return _cache.enabled;
+  } catch {
+    return false;
+  }
+}
+function record2(ev) {
+  try {
+    if (!isEnabled()) return false;
+    import_node_fs.default.mkdirSync(LEDGER_DIR, { recursive: true });
+    import_node_fs.default.appendFileSync(EVENTS_FILE, `${JSON.stringify(ev)}
+`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// mcp-server.js
 var BASE = process.env.WB_URL || "http://127.0.0.1:5858";
-var DIR = import_node_path.default.dirname((0, import_node_url.fileURLToPath)(import_meta_url));
-var SERVER_ENTRY = ["server.cjs", "server.js"].map((f) => import_node_path.default.join(DIR, f)).find((f) => import_node_fs.default.existsSync(f));
+var DIR = import_node_path3.default.dirname((0, import_node_url.fileURLToPath)(import_meta_url));
+var SERVER_ENTRY = ["server.cjs", "server.js"].map((f) => import_node_path3.default.join(DIR, f)).find((f) => import_node_fs2.default.existsSync(f));
 async function healthy() {
   try {
     return (await fetch(`${BASE}/health`)).ok;
@@ -30984,10 +31028,10 @@ async function ensureBackend() {
   throw new Error(`whiteboard backend failed to start on ${BASE}`);
 }
 var current = null;
-async function api(path2, method = "GET", body) {
+async function api(path4, method = "GET", body) {
   let res;
   try {
-    res = await fetch(`${BASE}${path2}`, {
+    res = await fetch(`${BASE}${path4}`, {
       method,
       headers: body ? { "content-type": "application/json" } : void 0,
       body: body ? JSON.stringify(body) : void 0
@@ -31005,10 +31049,10 @@ async function requireBoard() {
   const names = boards.map((b) => `"${b.name}"`).join(", ") || "(none \u2014 use create_board)";
   throw new Error(`No board open. Use open_board or create_board first. Available: ${names}`);
 }
-async function bapi(path2, method, body) {
+async function bapi(path4, method, body) {
   const id = await requireBoard();
-  const sep = path2.includes("?") ? "&" : "?";
-  return api(`${path2}${sep}board=${encodeURIComponent(id)}`, method, body);
+  const sep = path4.includes("?") ? "&" : "?";
+  return api(`${path4}${sep}board=${encodeURIComponent(id)}`, method, body);
 }
 function qs(a = {}) {
   const p = new URLSearchParams();
@@ -31034,6 +31078,32 @@ var COLORS = "black, grey, light-violet, violet, blue, light-blue, yellow, orang
 var GEOS = "rectangle, ellipse, diamond, triangle, hexagon, cloud, star, oval, pentagon, octagon, rhombus, trapezoid, x-box, check-box, heart";
 var FILLS = "none, semi, solid, pattern";
 var server = new McpServer({ name: "shared-whiteboard", version: "0.2.0" });
+var SESSION = `sess-${Math.random().toString(36).slice(2, 10)}`;
+var _registerTool = server.registerTool.bind(server);
+server.registerTool = (name, def, handler) => _registerTool(name, def, async (args, extra) => {
+  const start = Date.now();
+  const result = await handler(args, extra);
+  if (isEnabled()) {
+    const failed = result?.isError === true;
+    const resText = (result?.content || []).map((c) => c.text || "").join("");
+    const a = args || {};
+    record2({
+      ts: start,
+      iso: new Date(start).toISOString(),
+      session: SESSION,
+      tool: name,
+      ok: !failed,
+      ms: Date.now() - start,
+      argKeys: Object.keys(a),
+      argBytes: Buffer.byteLength(JSON.stringify(a) || ""),
+      resBytes: Buffer.byteLength(resText),
+      board: current?.id || null,
+      ...Array.isArray(a.ops) ? { opsCount: a.ops.length } : {},
+      ...failed ? { error: resText.slice(0, 300) } : {}
+    });
+  }
+  return result;
+});
 server.registerTool("list_boards", {
   description: "List all whiteboards (name, id, shape count, last updated). The name is what you open by.",
   inputSchema: {}
@@ -31202,7 +31272,7 @@ Great for dropping a hand-authored / skill-generated diagram (e.g. the sequence-
   }
 }, wrap((a) => {
   let svg = a.svg;
-  if (!svg && a.file) svg = import_node_fs.default.readFileSync(import_node_path.default.resolve(a.file), "utf8");
+  if (!svg && a.file) svg = import_node_fs2.default.readFileSync(import_node_path3.default.resolve(a.file), "utf8");
   if (!svg || !svg.trim()) throw new Error('create_svg needs "svg" (markup) or "file" (path to a .svg)');
   return bapi("/batch", "POST", { ops: [{ op: "svg", svg, x: a.x, y: a.y, w: a.w, h: a.h, name: a.name }] });
 }));

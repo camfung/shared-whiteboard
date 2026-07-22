@@ -12,6 +12,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, execFileSync } from 'node:child_process'
+import * as ledger from './ledger.js'
 
 const BASE = process.env.WB_URL || 'http://127.0.0.1:5858'
 const STATE_FILE = process.env.WB_STATE || join(homedir(), '.config', 'shared-whiteboard', 'state.json')
@@ -268,6 +269,20 @@ const cmds = {
     delete: (f) => api('/templates/delete', 'POST', pick(f, ['name'])),
   },
 
+  // Turn MCP usage recording on/off and inspect what was recorded. Recording
+  // happens in the MCP server (mcp-server.js); this group only flips the flag it
+  // reads and reads back the shared ledger files — a running MCP session picks up
+  // on/off within a couple of calls, no restart needed.
+  ledger: {
+    on: () => ledger.enable(),
+    off: () => ledger.disable(),
+    status: () => ledger.status(),
+    stats: () => ledger.aggregate(),
+    show: (f) => ({ events: ledger.readEvents(f.n != null && f.n !== true ? f.n : 20) }),
+    clear: () => ledger.clear(),
+    path: () => ledger.paths,
+  },
+
   server: {
     status: async () => {
       const pids = serverPids()
@@ -355,6 +370,15 @@ template — reusable templates
   template save   --name .. --ids '[..]'
   template stamp  --name .. --x .. --y ..
   template delete --name ..
+
+ledger — record + inspect MCP tool usage (to optimize the tool surface)
+  ledger on                                start recording (takes effect in live MCP sessions)
+  ledger off                               stop recording
+  ledger status                            enabled? + event count + file size + paths
+  ledger stats                             per-tool aggregate (calls, errors, latency, bytes)
+  ledger show     [--n 20]                 last N recorded events
+  ledger clear                             delete the recorded events (keeps the on/off flag)
+  ledger path                              ledger file locations
 
 server — control the sync backend (no systemd needed)
   server status                            up? + pids + entry + log path
