@@ -12,7 +12,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import {
-  buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml,
+  buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml, buildSvg,
   geoSizeForText, noteBox, richText, nextIndex, COLORS, FILLS, GEO, SIZES,
 } from './shapes.js'
 import { umlHeight, umlWidth } from './uml-schema.js'
@@ -246,7 +246,12 @@ function neighborsView(room, seedIds, hops) {
 // `overlapRatio` (overlap area / total leaf area) plus the worst offenders, so
 // an agent can decide whether to run "space"/reflow and verify afterward.
 function overlapReport(room) {
-  const NODE = new Set(['geo', 'uml', 'note', 'text'])
+  // 'text' excluded on purpose: tldraw text shapes auto-height and carry props.w
+  // but no props.h, so their overlap area is NaN — which never trips the
+  // `area <= 0` skip below and poisons overlapArea/ratio into null while flooding
+  // topOffenders with free-floating labels. Notes are dropped by the w != null
+  // filter (their width lives in meta.w). Only real boxes (geo, uml) are measured.
+  const NODE = new Set(['geo', 'uml'])
   const all = records(room)
     .filter((r) => r.typeName === 'shape' && NODE.has(r.type) && r.props?.w != null)
     .map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }))
@@ -763,6 +768,11 @@ const server = http.createServer(async (req, res) => {
               checkEnum('color', op.color, COLORS)
               const rec = buildUml({ name: op.name, fields: op.fields || [], methods: op.methods || [], x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() })
               store.put(rec); if (op.ref) refs[op.ref] = rec.id
+            } else if (k === 'svg') {
+              if (typeof op.svg !== 'string' || !op.svg.trim()) throw new Error('svg op needs an "svg" string (the SVG markup)')
+              const { asset, shape } = buildSvg({ svg: op.svg, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, name: op.name, index: takeIdx() })
+              store.put(asset); store.put(shape)
+              if (op.ref) refs[op.ref] = shape.id
             } else if (k === 'connect') {
               checkEnum('color', op.color, COLORS)
               const from = rid(op.from ?? op.fromId), to = rid(op.to ?? op.toId)
@@ -784,7 +794,7 @@ const server = http.createServer(async (req, res) => {
               for (const r of store.getAll()) if (r.typeName === 'binding' && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id)
               for (const id of ids) store.delete(id)
             } else {
-              throw new Error(`unknown op "${k}" (use node|text|note|uml|connect|update|move|delete)`)
+              throw new Error(`unknown op "${k}" (use node|text|note|uml|svg|connect|update|move|delete)`)
             }
           }
           reflowArrowLabels(store)

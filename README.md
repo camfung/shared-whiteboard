@@ -183,13 +183,14 @@ Editing the active board:
 - `create_uml {name,x,y,fields?,methods?,color?}` → id. A UML class block (title + fields + methods compartments).
 - `update_uml {id,name?,fields?,methods?,color?,x?,y?,w?}` — replace name/fields/methods.
 - `add_field {id,field}` / `add_method {id,method}` — append one row (auto-grows).
+- `create_svg {x,y,svg?,file?,w?,h?,name?}` → id. Drop an SVG onto the board as an image — pass the markup inline (`svg`) or a `.svg` path (`file`); `w`/`h` default to the SVG `viewBox`. Ideal for a skill-generated diagram (e.g. the sequence-diagram / flow-diagram skills) kept in its own house style. Renders in image mode (system fonts only — embed the font in the SVG for an exact webfont match).
 - `connect {fromId,toId,text?,color?,dashed?}` → arrow that follows the shapes.
 - `update_node {id,text?,x?,y?,w?,h?,color?,fill?}`.
 - `delete_shapes {ids}` — also removes bound arrows.
 - `clear_board` — wipe shapes/arrows (keeps the board).
 
 Bulk (build a whole diagram in one transaction):
-- `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`text`/`note`/`uml`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. Keep it compact:
+- `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`text`/`note`/`uml`/`svg`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. Keep it compact:
   - `defaults` — an object merged under every op (the `op` type too), so shared props aren't repeated: `defaults:{op:"node",w:250,fill:"semi"}`.
   - `{op:"col"|"row", x, y, step?, items[]}` — lay many boxes out from `(x,y)`, stepping down `y` (`col`) or along `x` (`row`); each item is a string or `{text,color?,…}` and inherits the layout op's shared props. Collapses a whole uniform column/grid into one op (irregular spacing → use plain `node` ops).
 

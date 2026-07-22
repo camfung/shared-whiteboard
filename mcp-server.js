@@ -251,6 +251,24 @@ server.registerTool('add_method', {
   inputSchema: { id: z.string(), method: z.string() },
 }, wrap((a) => bapi('/uml/add', 'POST', a)))
 
+server.registerTool('create_svg', {
+  description: `Place an SVG on the active board as an image. Pass the SVG markup inline as "svg", OR a path to a .svg file as "file" (read from disk). Width/height default to the SVG's viewBox, so you usually only pass x,y. Returns the image shape id.
+Great for dropping a hand-authored / skill-generated diagram (e.g. the sequence-diagram or flow-diagram skills, which emit a viewBox-only SVG) onto the board with its house style intact. Note: SVG renders in image mode — system fonts only (page webfonts like Hurmit fall back to monospace) unless the font is embedded in the SVG.`,
+  inputSchema: {
+    x: z.number(), y: z.number(),
+    svg: z.string().optional().describe('the SVG markup (inline). Provide this OR file.'),
+    file: z.string().optional().describe('path to a .svg file to read and embed (absolute, or relative to the whiteboard process cwd)'),
+    w: z.number().optional().describe('width override; omit to use the SVG viewBox width'),
+    h: z.number().optional().describe('height override; omit to use the SVG viewBox height'),
+    name: z.string().optional().describe('asset name (default diagram.svg)'),
+  },
+}, wrap((a) => {
+  let svg = a.svg
+  if (!svg && a.file) svg = fs.readFileSync(path.resolve(a.file), 'utf8')
+  if (!svg || !svg.trim()) throw new Error('create_svg needs "svg" (markup) or "file" (path to a .svg)')
+  return bapi('/batch', 'POST', { ops: [{ op: 'svg', svg, x: a.x, y: a.y, w: a.w, h: a.h, name: a.name }] })
+}))
+
 server.registerTool('connect', {
   description: 'Draw an arrow between two existing shapes on the active board. Optional label/color/dashed. The arrow follows the shapes when moved.',
   inputSchema: { fromId: z.string(), toId: z.string(), text: z.string().optional(), color: z.string().optional(), dashed: z.boolean().optional() },
@@ -278,8 +296,8 @@ server.registerTool('move_container', {
 }, wrap((a) => bapi('/move-container', 'POST', a)))
 
 server.registerTool('space_board', {
-  description: 'Tidy the whole active board: space every node apart to a minimum gap, grow each container to wrap its contents, and separate containers from each other (contents move with them). Also reflows arrow labels. Pairs with check_overlap: measure → space_board → re-measure.',
-  inputSchema: { gap: z.number().optional().describe('minimum px gap between nodes (default 60)') },
+  description: 'Tidy the whole active board: space every node apart to a minimum gap, grow each container to wrap its contents, and separate containers from each other (contents move with them). Also reflows arrow labels. Pairs with check_overlap: measure → space_board → re-measure. Prefer a gap of at least 200 for legible, uncramped spacing.',
+  inputSchema: { gap: z.number().optional().describe('minimum px gap between nodes (default 60; recommended at least 200)') },
 }, wrap((a) => bapi('/space', 'POST', a)))
 
 server.registerTool('space_container', {
@@ -310,6 +328,7 @@ Ops:
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}
+- {op:"svg",  ref?, svg, x, y, w?, h?, name?}   (embed SVG markup as an image; w/h default to the SVG viewBox)
 - {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
 - {op:"update", id, text?, x?, y?, w?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box height always auto-fits, re-fits to text at w if given)
 - {op:"move", id, x, y}

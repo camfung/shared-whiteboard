@@ -7872,6 +7872,41 @@ function buildArrow({ text = "", color = "black", dash = "draw", size = "m", ind
     scale
   });
 }
+function svgViewBox(svg = "") {
+  const s = String(svg);
+  const vb = s.match(/viewBox\s*=\s*["']\s*[\d.+-]+\s+[\d.+-]+\s+([\d.]+)\s+([\d.]+)/i);
+  if (vb) return { w: Math.max(1, Math.round(+vb[1])), h: Math.max(1, Math.round(+vb[2])) };
+  const wm = s.match(/\bwidth\s*=\s*["']?\s*([\d.]+)/i);
+  const hm = s.match(/\bheight\s*=\s*["']?\s*([\d.]+)/i);
+  if (wm && hm) return { w: Math.max(1, Math.round(+wm[1])), h: Math.max(1, Math.round(+hm[1])) };
+  return { w: 400, h: 300 };
+}
+function buildSvg({ svg, x = 0, y = 0, w, h, name = "diagram.svg", index: index2 }) {
+  const str = String(svg ?? "");
+  const box = svgViewBox(str);
+  const W = w != null ? Math.max(1, Math.round(w)) : box.w;
+  const H = h != null ? Math.max(1, Math.round(h)) : box.h;
+  const src = "data:image/svg+xml;base64," + Buffer.from(str, "utf8").toString("base64");
+  const asset = {
+    id: rid("asset"),
+    typeName: "asset",
+    type: "image",
+    meta: {},
+    props: { name, src, w: W, h: H, mimeType: "image/svg+xml", isAnimated: false }
+  };
+  const shape = baseShape("image", x, y, index2, {
+    w: W,
+    h: H,
+    playing: true,
+    url: "",
+    assetId: asset.id,
+    crop: null,
+    flipX: false,
+    flipY: false,
+    altText: ""
+  });
+  return { asset, shape };
+}
 function buildArrowBinding({ arrowId, shapeId, terminal }) {
   return {
     id: rid("binding"),
@@ -17969,7 +18004,7 @@ function neighborsView(room, seedIds, hops) {
   return { seeds, ...missing.length ? { missing } : {}, hops: Math.max(1, hops), clock: clockOf(snap), shapes, counts: { shapes: shapes.length } };
 }
 function overlapReport(room) {
-  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text"]);
+  const NODE = /* @__PURE__ */ new Set(["geo", "uml"]);
   const all = records(room).filter((r) => r.typeName === "shape" && NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }));
   const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5;
   const containerIds = new Set(all.filter((a) => all.some((b) => contains(a, b))).map((a) => a.id));
@@ -18503,6 +18538,12 @@ var server = import_node_http.default.createServer(async (req, res) => {
               const rec = buildUml({ name: op.name, fields: op.fields || [], methods: op.methods || [], x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() });
               store.put(rec);
               if (op.ref) refs[op.ref] = rec.id;
+            } else if (k === "svg") {
+              if (typeof op.svg !== "string" || !op.svg.trim()) throw new Error('svg op needs an "svg" string (the SVG markup)');
+              const { asset, shape } = buildSvg({ svg: op.svg, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, name: op.name, index: takeIdx() });
+              store.put(asset);
+              store.put(shape);
+              if (op.ref) refs[op.ref] = shape.id;
             } else if (k === "connect") {
               checkEnum("color", op.color, COLORS);
               const from = rid3(op.from ?? op.fromId), to = rid3(op.to ?? op.toId);
@@ -18524,7 +18565,7 @@ var server = import_node_http.default.createServer(async (req, res) => {
               for (const r of store.getAll()) if (r.typeName === "binding" && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id);
               for (const id of ids) store.delete(id);
             } else {
-              throw new Error(`unknown op "${k}" (use node|text|note|uml|connect|update|move|delete)`);
+              throw new Error(`unknown op "${k}" (use node|text|note|uml|svg|connect|update|move|delete)`);
             }
           }
           reflowArrowLabels(store);

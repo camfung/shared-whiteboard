@@ -188,6 +188,43 @@ export function buildArrow({ text = '', color = 'black', dash = 'draw', size = '
   })
 }
 
+// Parse an SVG's intrinsic size. Prefer viewBox (its w/h are the 3rd/4th numbers);
+// fall back to width/height attrs; else a square default. The sequence-diagram and
+// flow-diagram skills emit viewBox-only SVGs, so viewBox is the common path.
+export function svgViewBox(svg = '') {
+  const s = String(svg)
+  const vb = s.match(/viewBox\s*=\s*["']\s*[\d.+-]+\s+[\d.+-]+\s+([\d.]+)\s+([\d.]+)/i)
+  if (vb) return { w: Math.max(1, Math.round(+vb[1])), h: Math.max(1, Math.round(+vb[2])) }
+  const wm = s.match(/\bwidth\s*=\s*["']?\s*([\d.]+)/i)
+  const hm = s.match(/\bheight\s*=\s*["']?\s*([\d.]+)/i)
+  if (wm && hm) return { w: Math.max(1, Math.round(+wm[1])), h: Math.max(1, Math.round(+hm[1])) }
+  return { w: 400, h: 300 }
+}
+
+// Embed an SVG as a tldraw image: an image ASSET (data-URI src) + an image SHAPE
+// referencing it. The client's inlineBase64AssetStore returns props.src verbatim,
+// so a data: URI renders with no upload. w/h default to the SVG's viewBox size.
+// Returns { asset, shape } — put BOTH into the store (asset first).
+export function buildSvg({ svg, x = 0, y = 0, w, h, name = 'diagram.svg', index }) {
+  const str = String(svg ?? '')
+  const box = svgViewBox(str)
+  const W = w != null ? Math.max(1, Math.round(w)) : box.w
+  const H = h != null ? Math.max(1, Math.round(h)) : box.h
+  const src = 'data:image/svg+xml;base64,' + Buffer.from(str, 'utf8').toString('base64')
+  const asset = {
+    id: rid('asset'),
+    typeName: 'asset',
+    type: 'image',
+    meta: {},
+    props: { name, src, w: W, h: H, mimeType: 'image/svg+xml', isAnimated: false },
+  }
+  const shape = baseShape('image', x, y, index, {
+    w: W, h: H, playing: true, url: '', assetId: asset.id,
+    crop: null, flipX: false, flipY: false, altText: '',
+  })
+  return { asset, shape }
+}
+
 export function buildArrowBinding({ arrowId, shapeId, terminal }) {
   return {
     id: rid('binding'),
