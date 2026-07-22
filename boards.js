@@ -9,6 +9,7 @@ import path from 'node:path'
 import { TLSocketRoom } from '@tldraw/sync-core'
 import { createTLSchema, defaultShapeSchemas, defaultBindingSchemas } from '@tldraw/tlschema'
 import { umlProps } from './uml-schema.js'
+import { borderLabelProps } from './borderlabel-schema.js'
 import { DATA_DIR } from './data-dir.js'
 
 const SNAP_DIR = path.join(DATA_DIR, 'snapshots')
@@ -19,7 +20,7 @@ fs.mkdirSync(SNAP_DIR, { recursive: true })
 
 // Register the custom uml shape alongside the defaults (must match the browser).
 const schema = createTLSchema({
-  shapes: { ...defaultShapeSchemas, uml: { props: umlProps } },
+  shapes: { ...defaultShapeSchemas, uml: { props: umlProps }, borderLabel: { props: borderLabelProps } },
   bindings: defaultBindingSchemas,
 })
 const rooms = new Map() // id -> TLSocketRoom

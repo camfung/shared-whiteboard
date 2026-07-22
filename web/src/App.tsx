@@ -5,6 +5,7 @@ import { inlineBase64AssetStore } from '@tldraw/editor'
 import 'tldraw/tldraw.css'
 import './hurmit.css' // override tldraw fonts with Hurmit (after tldraw.css)
 import { UmlShapeUtil } from './uml'
+import { BorderLabelShapeUtil } from './borderLabel'
 import { StickyNoteUtil } from './note'
 import { BoardManager } from './BoardManager'
 import { PALETTE, initialTheme, persistTheme, type Theme } from './theme'
@@ -14,7 +15,7 @@ import { PALETTE, initialTheme, persistTheme, type Theme } from './theme'
 // same props/schema — it only overrides the rendered width). useSync builds the
 // store schema from these (it replaces, not merges, so defaults must be included);
 // the same lists go to Tldraw for rendering. Matches the server schema.
-const SHAPE_UTILS = [...defaultShapeUtils.filter((u) => (u as any).type !== 'note'), StickyNoteUtil, UmlShapeUtil]
+const SHAPE_UTILS = [...defaultShapeUtils.filter((u) => (u as any).type !== 'note'), StickyNoteUtil, UmlShapeUtil, BorderLabelShapeUtil]
 const BINDING_UTILS = defaultBindingUtils
 
 const API = `http://${location.hostname}:5858`

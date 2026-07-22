@@ -10,7 +10,7 @@
       "name": "shared-whiteboard",
       "source": ".",
       "description": "Co-edit a live tldraw whiteboard with Claude (boxes, UML, notes, arrows, auto-layout).",
-      "version": "0.7.2"
+      "version": "0.7.3"
     }
   ]
 }

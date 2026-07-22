@@ -199,13 +199,13 @@ server.registerTool('check_overlap', {
 }, wrap(() => bapi('/overlap')))
 
 server.registerTool('create_node', {
-  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text (pass w only to force a width). By default text wraps to w; pass nowrap to keep it on one line — then w is a minimum width and the box widens to fit long text. Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
+  description: `Create a labeled box/shape on the active board. The box auto-sizes to fit its text. Labels stay on a single line by default — w acts as a minimum width and the box widens to fit long text. Pass nowrap:false to opt into wrapping instead (then w is a hard width and the box grows taller). Returns its id. Colors: ${COLORS}. Shapes: ${GEOS}. Fills: ${FILLS}.`,
   inputSchema: {
     text: z.string(), x: z.number(), y: z.number(),
-    w: z.number().optional().describe('width; omit to auto-fit text. With nowrap, acts as a minimum width'),
+    w: z.number().optional().describe('minimum width; box widens to fit the single-line label. Omit to auto-fit. With nowrap:false, this is a hard width and text wraps to it'),
     shape: z.string().optional().describe('geo shape, default rectangle'),
     color: z.string().optional(), fill: z.string().optional(),
-    nowrap: z.boolean().optional().describe('never wrap the label — box stays one line and widens to fit; w becomes a minimum width'),
+    nowrap: z.boolean().optional().describe('single-line is enforced by default; box widens to fit and w is a minimum width. Pass false to opt into wrapping (w becomes a hard width, box grows tall)'),
   },
 }, wrap((a) => bapi('/node', 'POST', a)))
 
@@ -231,7 +231,7 @@ server.registerTool('create_uml', {
 }, wrap((a) => bapi('/uml', 'POST', a)))
 
 server.registerTool('create_border_label', {
-  description: `Create a fieldset-style "border label" field on the active board: a rounded frame with the LABEL sitting in a real gap cut into the top stroke (like an HTML <fieldset>/<legend> or a Material outlined text field) and the VALUE inside. Great for form-field mockups, labeled value chips, or any "name : contents" pairing where the name should stay visible on the border. The box auto-sizes to the value (pass w as a minimum width); an over-long label truncates with an ellipsis to keep the gap inside the frame. The frame + label take "color"; the value renders near-white for the dark canvas. Returns the shape id. Colors: ${COLORS}. Note: rendered as an SVG image — not text-editable in the editor and does not adapt to a light theme.`,
+  description: `Create a fieldset-style "border label" field on the active board: a rounded frame with the LABEL sitting in a real gap in the top border (like an HTML <fieldset>/<legend> or a Material outlined text field) and the VALUE inside. Great for form-field mockups, labeled value chips, or any "name : contents" pairing where the name should stay visible on the border. A first-class shape: double-click to edit the label + value, drag to resize, and it follows the board's light/dark theme. The box auto-sizes to the value (pass w as a minimum width); an over-long label/value truncates with an ellipsis. The frame + label take "color". Returns the shape id. Colors: ${COLORS}.`,
   inputSchema: {
     label: z.string().describe('the legend text that sits in the gap on the top border'),
     value: z.string().describe('the value shown inside the frame'),
@@ -345,7 +345,7 @@ server.registerTool('reflow_labels', {
 server.registerTool('apply_ops', {
   description: `Apply MANY board edits in ONE call (single transaction) — use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
 Ops:
-- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?, nowrap?}  (box auto-fits its text; height always auto-fits; nowrap keeps one line + makes w a minimum width)
+- {op:"node", ref?, text, x, y, w?, shape?, color?, fill?, nowrap?}  (box auto-fits its text; single-line by default, w is a minimum width; pass nowrap:false to wrap at w)
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}

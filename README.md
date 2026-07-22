@@ -100,6 +100,12 @@ same props (no migrations, so the synced schemas match):
 3. `shapes.js` `buildUml` (the record the MCP server writes).
 Change the props in one, change them in all three, or sync breaks.
 
+The `borderLabel` shape (fieldset-style label/value field) follows the exact same
+three-place contract: `web/src/borderLabel.tsx` (`BorderLabelShapeUtil`, also
+registered in `App.tsx` `SHAPE_UTILS`), `borderlabel-schema.js` → `boards.js`,
+and `shapes.js` `buildBorderLabel`. Its sizing (`borderLabelSize`) is duplicated
+in the schema + the util and must stay in sync.
+
 ### Reuse model
 No Figma-style linked masters (tldraw has none). A template is a captured bundle
 of records; stamping clones them with new ids at a target point. Copies are
@@ -181,7 +187,7 @@ Editing the active board:
 - `create_text {text,x,y,color?,size?}` → id.
 - `create_note {text,x,y,color?}` → id.
 - `create_uml {name,x,y,fields?,methods?,color?}` → id. A UML class block (title + fields + methods compartments).
-- `create_border_label {label,value,x,y,w?,color?}` → id. A fieldset-style field: the `label` sits in a real gap cut into the top border (like an HTML `<fieldset>`/`<legend>`), the `value` shows inside. Box auto-fits the value (`w` = minimum width); an over-long label truncates with an ellipsis. Frame + label take `color`; renders as an SVG image (not text-editable; tuned for the dark canvas).
+- `create_border_label {label,value,x,y,w?,color?}` → id. A fieldset-style field: the `label` sits in a real gap in the top border (like an HTML `<fieldset>`/`<legend>`), the `value` shows inside. First-class custom shape — double-click to edit label + value, resizable, theme-aware. Box auto-fits the value (`w` = minimum width); over-long label/value truncates with an ellipsis. Frame + label take `color`.
 - `update_uml {id,name?,fields?,methods?,color?,x?,y?,w?}` — replace name/fields/methods.
 - `add_field {id,field}` / `add_method {id,method}` — append one row (auto-grows).
 - `create_svg {x,y,svg?,file?,w?,h?,name?}` → id. Drop an SVG onto the board as an image — pass the markup inline (`svg`) or a `.svg` path (`file`); `w`/`h` default to the SVG `viewBox`. Ideal for a skill-generated diagram (e.g. the sequence-diagram / flow-diagram skills) kept in its own house style. Renders in image mode (system fonts only — embed the font in the SVG for an exact webfont match).

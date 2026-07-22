@@ -7662,6 +7662,27 @@ function umlWidth(name = "", fields = [], methods = []) {
   return Math.max(180, Math.round(maxLen * 7.6) + 28);
 }
 
+// borderlabel-schema.js
+var borderLabelProps = {
+  label: validation_exports.string,
+  value: validation_exports.string,
+  w: validation_exports.number,
+  h: validation_exports.number,
+  color: validation_exports.string
+};
+var VALUE_FS = 18;
+var LABEL_FS = 12;
+var CHAR = 0.66;
+var PAD_X = 34;
+var MIN_W = 150;
+var HEIGHT = 64;
+function borderLabelSize(label = "", value = "", w) {
+  const valueW = String(value).length * VALUE_FS * CHAR;
+  const labelW = String(label).length * LABEL_FS * CHAR + 24;
+  const fit = Math.max(MIN_W, Math.ceil(Math.max(valueW, labelW)) + PAD_X);
+  return { w: Math.max(fit, w ? Math.round(w) : 0), h: HEIGHT };
+}
+
 // shapes.js
 var COLORS = [
   "black",
@@ -7753,7 +7774,7 @@ function geoSizeForText(text = "", size = "m", geo = "rectangle", scale = 1, tar
   const h = Math.round(Math.max(48, rows * fs4 * GEO_LINE + GEO_PAD_Y) * roomy);
   return { w, h };
 }
-function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", nowrap = false, index: index2 }) {
+function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "black", fill = "none", dash = "draw", size = "m", nowrap = true, index: index2 }) {
   const { size: s, scale } = bumpSize(size);
   const fit = geoSizeForText(text, s, geo, scale, w != null ? w : null, nowrap);
   const shape = baseShape("geo", x, y, index2, {
@@ -7913,70 +7934,15 @@ function buildSvg({ svg, x = 0, y = 0, w, h, name = "diagram.svg", index: index2
   });
   return { asset, shape };
 }
-var BL_HEX = {
-  grey: "#a9b0b8",
-  black: "#d7dbe0",
-  blue: "#6b8cff",
-  "light-blue": "#63b3ed",
-  green: "#7cc47c",
-  "light-green": "#9ad19a",
-  red: "#e06a6a",
-  "light-red": "#e89a9a",
-  orange: "#e0975a",
-  yellow: "#d8c25a",
-  violet: "#b48cff",
-  "light-violet": "#cbb4ff"
-};
-var BL_LABEL_FS = 15;
-var BL_VALUE_FS = 24;
-var BL_CHAR = 0.6;
-var BL_PAD_L = 28;
-var BL_PAD_R = 22;
-var BL_MIN_W = 160;
-var BL_MAX_W = 680;
-var BL_H = 96;
-var BL_Y0 = 14;
-var BL_R = 14;
-var BL_SW = 2.5;
-var BL_GAP_X = 22;
-var BL_MIN_RSEG = 26;
-var xmlEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-var clip = (s, max) => s.length > max ? s.slice(0, Math.max(1, max - 1)) + "\u2026" : s;
 function buildBorderLabel({ label = "", value = "", x = 0, y = 0, w, color = "grey", index: index2 }) {
-  const labelCW = BL_LABEL_FS * BL_CHAR;
-  const valueCW = BL_VALUE_FS * BL_CHAR;
-  const Y1 = BL_H - 10;
-  const valStr = String(value ?? "");
-  const W = Math.min(BL_MAX_W, Math.max(BL_MIN_W, w ? Math.round(w) : 0, Math.ceil(valStr.length * valueCW) + BL_PAD_L + BL_PAD_R));
-  const valMax = Math.max(1, Math.floor((W - BL_PAD_L - BL_PAD_R) / valueCW));
-  const value2 = xmlEsc(clip(valStr, valMax));
-  const rightStop = W - BL_R - BL_MIN_RSEG;
-  const lblMax = Math.max(1, Math.floor((rightStop - BL_GAP_X - 8) / labelCW));
-  const label2 = xmlEsc(clip(String(label ?? ""), lblMax));
-  const gapW = Math.ceil(label2.length * labelCW) + 12;
-  const gx1 = Math.min(rightStop, BL_GAP_X + gapW);
-  const stroke = BL_HEX[color] || BL_HEX.grey;
-  const labelBase = BL_Y0 + BL_LABEL_FS * 0.34;
-  const valueBase = (BL_Y0 + Y1) / 2 + BL_VALUE_FS * 0.34;
-  const path5 = [
-    `M ${gx1} ${BL_Y0}`,
-    `L ${W - BL_SW - BL_R} ${BL_Y0}`,
-    `A ${BL_R} ${BL_R} 0 0 1 ${W - BL_SW} ${BL_Y0 + BL_R}`,
-    `L ${W - BL_SW} ${Y1 - BL_R}`,
-    `A ${BL_R} ${BL_R} 0 0 1 ${W - BL_SW - BL_R} ${Y1}`,
-    `L ${BL_SW + BL_R} ${Y1}`,
-    `A ${BL_R} ${BL_R} 0 0 1 ${BL_SW} ${Y1 - BL_R}`,
-    `L ${BL_SW} ${BL_Y0 + BL_R}`,
-    `A ${BL_R} ${BL_R} 0 0 1 ${BL_SW + BL_R} ${BL_Y0}`,
-    `L ${BL_GAP_X} ${BL_Y0}`
-  ].join(" ");
-  const FONT = "ui-monospace,'DejaVu Sans Mono',monospace";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${BL_H}">
-  <path d="${path5}" fill="none" stroke="${stroke}" stroke-width="${BL_SW}" stroke-linejoin="round" stroke-linecap="round"/>
-  <text x="${BL_GAP_X + 8}" y="${labelBase}" font-family="${FONT}" font-size="${BL_LABEL_FS}" fill="${stroke}">${label2}</text>
-  <text x="${BL_PAD_L}" y="${valueBase}" font-family="${FONT}" font-size="${BL_VALUE_FS}" fill="#ededed">${value2}</text>
-</svg>`;
-  return buildSvg({ svg, x, y, w: W, h: BL_H, name: "border-label.svg", index: index2 });
+  const size = borderLabelSize(label, value, w);
+  return baseShape("borderLabel", x, y, index2, {
+    label: String(label ?? ""),
+    value: String(value ?? ""),
+    w: size.w,
+    h: size.h,
+    color
+  });
 }
 function buildArrowBinding({ arrowId, shapeId, terminal }) {
   return {
@@ -17639,7 +17605,7 @@ var INDEX_FILE = import_node_path2.default.join(DATA_DIR, "boards.json");
 var FOLDERS_FILE = import_node_path2.default.join(DATA_DIR, "folders.json");
 import_node_fs.default.mkdirSync(SNAP_DIR, { recursive: true });
 var schema = createTLSchema({
-  shapes: { ...defaultShapeSchemas, uml: { props: umlProps } },
+  shapes: { ...defaultShapeSchemas, uml: { props: umlProps }, borderLabel: { props: borderLabelProps } },
   bindings: defaultBindingSchemas
 });
 var rooms = /* @__PURE__ */ new Map();
@@ -18537,9 +18503,9 @@ var server = import_node_http.default.createServer(async (req, res) => {
       }
       if (p === "/border-label") {
         checkEnum("color", b.color, COLORS);
-        const { asset, shape } = buildBorderLabel({ label: b.label, value: b.value, x: b.x ?? 0, y: b.y ?? 0, w: b.w, color: b.color, index: nextIndex(shapeIndexKeys(room)) });
-        await put(room, asset, shape);
-        return json(res, 200, { id: shape.id });
+        const rec = buildBorderLabel({ label: b.label, value: b.value, x: b.x ?? 0, y: b.y ?? 0, w: b.w, color: b.color, index: nextIndex(shapeIndexKeys(room)) });
+        await put(room, rec);
+        return json(res, 200, { id: rec.id });
       }
       if (p === "/uml") {
         checkEnum("color", b.color, COLORS);
@@ -18678,10 +18644,9 @@ var server = import_node_http.default.createServer(async (req, res) => {
               if (op.ref) refs[op.ref] = shape.id;
             } else if (k === "border_label") {
               checkEnum("color", op.color, COLORS);
-              const { asset, shape } = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() });
-              store.put(asset);
-              store.put(shape);
-              if (op.ref) refs[op.ref] = shape.id;
+              const rec = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() });
+              store.put(rec);
+              if (op.ref) refs[op.ref] = rec.id;
             } else if (k === "connect") {
               checkEnum("color", op.color, COLORS);
               const from = rid3(op.from ?? op.fromId), to = rid3(op.to ?? op.toId);

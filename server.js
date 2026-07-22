@@ -728,9 +728,9 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/border-label') {
         checkEnum('color', b.color, COLORS)
-        const { asset, shape } = buildBorderLabel({ label: b.label, value: b.value, x: b.x ?? 0, y: b.y ?? 0, w: b.w, color: b.color, index: nextIndex(shapeIndexKeys(room)) })
-        await put(room, asset, shape)
-        return json(res, 200, { id: shape.id })
+        const rec = buildBorderLabel({ label: b.label, value: b.value, x: b.x ?? 0, y: b.y ?? 0, w: b.w, color: b.color, index: nextIndex(shapeIndexKeys(room)) })
+        await put(room, rec)
+        return json(res, 200, { id: rec.id })
       }
       if (p === '/uml') {
         checkEnum('color', b.color, COLORS)
@@ -847,9 +847,9 @@ const server = http.createServer(async (req, res) => {
               if (op.ref) refs[op.ref] = shape.id
             } else if (k === 'border_label') {
               checkEnum('color', op.color, COLORS)
-              const { asset, shape } = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() })
-              store.put(asset); store.put(shape)
-              if (op.ref) refs[op.ref] = shape.id
+              const rec = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() })
+              store.put(rec)
+              if (op.ref) refs[op.ref] = rec.id
             } else if (k === 'connect') {
               checkEnum('color', op.color, COLORS)
               const from = rid(op.from ?? op.fromId), to = rid(op.to ?? op.toId)
