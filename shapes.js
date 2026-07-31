@@ -1,6 +1,6 @@
 // Builders that turn semantic requests into valid tldraw v5.2.5 records.
 // Templates captured empirically from a live tldraw editor (see README).
-import { getIndexAbove, ZERO_INDEX_KEY } from '@tldraw/utils'
+import { getIndexAbove, getIndexBelow, ZERO_INDEX_KEY } from '@tldraw/utils'
 import { umlHeight, umlWidth } from './uml-schema.js'
 import { borderLabelSize } from './borderlabel-schema.js'
 
@@ -110,6 +110,18 @@ export function buildGeo({ text = '', x = 0, y = 0, w, geo = 'rectangle', color 
   // persist nowrap so a later text edit (update) keeps honoring single-line width
   if (nowrap) shape.meta = { nowrap: true }
   return shape
+}
+
+// A container IS a tldraw frame: native frame shape with a name label. Shapes
+// parented to it (parentId = frame id) live in frame-relative coordinates and
+// move with it — the editor handles drag-in/drag-out and carrying natively.
+export function buildFrame({ name = '', x = 0, y = 0, w = 400, h = 300, color = 'black', index }) {
+  return baseShape('frame', x, y, index, {
+    w: Math.max(1, Math.round(w)),
+    h: Math.max(1, Math.round(h)),
+    name: String(name ?? ''),
+    color,
+  })
 }
 
 export function buildText({ text = '', x = 0, y = 0, color = 'black', size = 'm', index }) {
@@ -274,4 +286,11 @@ export function buildArrowBinding({ arrowId, shapeId, terminal }) {
 export function nextIndex(existingIndexKeys) {
   const max = existingIndexKeys.filter(Boolean).sort().pop()
   return getIndexAbove(max || ZERO_INDEX_KEY)
+}
+
+// Fractional index below the current lowest — frames go to the BACK so a frame
+// stamped over existing page-level shapes never paints its background on top.
+export function prevIndex(existingIndexKeys) {
+  const min = existingIndexKeys.filter(Boolean).sort()[0]
+  return min ? getIndexBelow(min) : getIndexAbove(ZERO_INDEX_KEY)
 }

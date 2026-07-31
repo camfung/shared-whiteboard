@@ -84,6 +84,10 @@
   `Interface Adapters(400,220,800×560)`, `Use Cases(500,320,600×360)`, `Entities(600,420,400×160)` center.
 - **Pure part-of nesting:** container with header at top, children below — `Module(300,150,500×300)`, header
   y≈165, `Pkg A(330,215)`, `Pkg B(330,295)`, 24px padding, 20px gap.
+- **Containers are frames:** draw every container/ring/layer band with the
+  `{op:"frame", name, x, y, w, h}` op (or `create_frame`), NOT a big node box —
+  the frame carries its label on the top edge (no separate header text needed)
+  and its contents move with it.
 
 ## Sources
 - Reingold & Tilford, *Tidier Drawings of Trees* — https://reingold.co/tidier-drawings.pdf

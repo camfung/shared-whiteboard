@@ -31207,6 +31207,17 @@ server.registerTool("create_node", {
     nowrap: external_exports.boolean().optional().describe("single-line is enforced by default; box widens to fit and w is a minimum width. Pass false to opt into wrapping (w becomes a hard width, box grows tall)")
   }
 }, wrap((a) => bapi("/node", "POST", a)));
+server.registerTool("create_frame", {
+  description: `Create a CONTAINER on the active board \u2014 a native tldraw frame with a name label on its top edge. This is THE grouping primitive: shapes already inside the frame's bounds are adopted as children, and anything created or dragged inside later joins it, so moving the frame carries its contents natively (UI drag included). Frames render behind their contents. Use a frame whenever you want a labeled region/group/lane (module boundary, swimlane, subsystem, phase). Returns its id. Colors: ${COLORS}.`,
+  inputSchema: {
+    name: external_exports.string().describe("frame label (shown on the top edge)"),
+    x: external_exports.number(),
+    y: external_exports.number(),
+    w: external_exports.number().optional().describe("width (default 400)"),
+    h: external_exports.number().optional().describe("height (default 300)"),
+    color: external_exports.string().optional()
+  }
+}, wrap((a) => bapi("/frame", "POST", a)));
 server.registerTool("create_text", {
   description: `Create free-standing text on the active board. Returns its id. Colors: ${COLORS}.`,
   inputSchema: { text: external_exports.string(), x: external_exports.number(), y: external_exports.number(), color: external_exports.string().optional(), size: external_exports.string().optional().describe("s, m, l, xl") }
@@ -31294,7 +31305,7 @@ server.registerTool("update_node", {
   }
 }, wrap((a) => bapi("/update", "POST", a)));
 server.registerTool("move_container", {
-  description: "Move a container box AND every node inside it together (like grabbing the frame in the UI). Pass an absolute target for the container top-left (x,y) OR a relative delta (dx,dy). Arrows bound to moved nodes follow automatically. The container is any box; everything geometrically inside its bounds moves with it.",
+  description: "Move a container (a tldraw frame \u2014 see create_frame) AND everything inside it together. Pass an absolute page-space target for the container top-left (x,y) OR a relative delta (dx,dy). Frame children ride natively; page-level shapes geometrically inside the bounds are carried too, and arrows follow. Legacy container BOXES (a geo box drawn around nodes) still work the same way.",
   inputSchema: {
     id: external_exports.string(),
     x: external_exports.number().optional().describe("new top-left x (absolute)"),
@@ -31308,8 +31319,8 @@ server.registerTool("space_board", {
   inputSchema: { gap: external_exports.number().optional().describe("minimum px gap between nodes (default 60; recommended at least 200)") }
 }, wrap((a) => bapi("/space", "POST", a)));
 server.registerTool("space_container", {
-  description: "Space apart ONLY the nodes inside one container (given its box id) and grow that container to fit, keeping its top-left anchored. The rest of the board is left untouched.",
-  inputSchema: { id: external_exports.string().describe("the container box id"), gap: external_exports.number().optional().describe("minimum px gap (default 60)") }
+  description: "Space apart ONLY the nodes inside one container (a frame id, or a legacy container box id) and grow that container to fit, keeping its top-left anchored. The rest of the board is left untouched.",
+  inputSchema: { id: external_exports.string().describe("the container (frame) id"), gap: external_exports.number().optional().describe("minimum px gap (default 60)") }
 }, wrap((a) => bapi("/space", "POST", { gap: a.gap, container: a.id })));
 server.registerTool("space_evenly", {
   description: 'Distribute nodes so the GAPS between them are equal along one axis (like Figma "distribute spacing") \u2014 the two end nodes stay put and the middle ones slide until every edge-to-edge gap is identical. axis "horizontal" evens the left\u2192right gaps (keeps each y); "vertical" evens the top\u2192bottom gaps (keeps each x). Pass 3+ node ids. A container box carries its contents along. Use this to line up a row/column into even spacing; use space_board / space_container for collision-only spreading.',
@@ -31334,6 +31345,7 @@ server.registerTool("apply_ops", {
   description: `Apply MANY board edits in ONE call (single transaction) \u2014 use this instead of many separate create/move/connect calls when building or rearranging a diagram. Pass an ordered "ops" array. A create op may set a "ref" (temporary name) that later ops use in place of an id, so you can create nodes AND connect/move them in the same call.
 Ops:
 - {op:"node", ref?, text, x, y, w?, shape?, color?, fill?, nowrap?}  (box auto-fits its text; single-line by default, w is a minimum width; pass nowrap:false to wrap at w)
+- {op:"frame", ref?, name, x, y, w?, h?, color?}   (CONTAINER: a native tldraw frame; shapes inside its bounds \u2014 including ones created earlier in this same ops list \u2014 become its children and move with it)
 - {op:"text", ref?, text, x, y, color?, size?}
 - {op:"note", ref?, text, x, y, color?}
 - {op:"uml",  ref?, name, x, y, fields?, methods?, color?}
@@ -31342,7 +31354,7 @@ Ops:
 - {op:"connect", from, to, text?, color?, dashed?}   (from/to = a ref or a real id)
 - {op:"update", id, text?, x?, y?, w?, color?, fill?, name?, fields?, methods?}  (id = ref or real id; box height always auto-fits, re-fits to text at w if given)
 - {op:"move", id, x, y}
-- {op:"move_container", id, x?, y?, dx?, dy?}   (moves the box + everything inside it)
+- {op:"move_container", id, x?, y?, dx?, dy?}   (moves the frame/box + everything inside it)
 - {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
 - {op:"distribute", ids:[...], axis:"horizontal"|"vertical"}   (even the gaps between 3+ nodes along one axis; end nodes stay put)
 - {op:"delete", ids:[...]}

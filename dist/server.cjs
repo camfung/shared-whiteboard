@@ -6332,6 +6332,9 @@ function validateIndexKey(index2) {
 function getIndexAbove(below = null) {
   return generateKeysFn(below, null, 1)[0];
 }
+function getIndexBelow(above = null) {
+  return generateKeysFn(null, above, 1)[0];
+}
 function getIndices(n, start = "a1") {
   return [start, ...generateKeysFn(start, null, n)];
 }
@@ -7797,6 +7800,14 @@ function buildGeo({ text = "", x = 0, y = 0, w, geo = "rectangle", color = "blac
   if (nowrap) shape.meta = { nowrap: true };
   return shape;
 }
+function buildFrame({ name = "", x = 0, y = 0, w = 400, h = 300, color = "black", index: index2 }) {
+  return baseShape("frame", x, y, index2, {
+    w: Math.max(1, Math.round(w)),
+    h: Math.max(1, Math.round(h)),
+    name: String(name ?? ""),
+    color
+  });
+}
 function buildText({ text = "", x = 0, y = 0, color = "black", size = "m", index: index2 }) {
   const { size: s, scale } = bumpSize(size);
   return baseShape("text", x, y, index2, {
@@ -7964,6 +7975,10 @@ function buildArrowBinding({ arrowId, shapeId, terminal }) {
 function nextIndex(existingIndexKeys) {
   const max = existingIndexKeys.filter(Boolean).sort().pop();
   return getIndexAbove(max || ZERO_INDEX_KEY);
+}
+function prevIndex(existingIndexKeys) {
+  const min = existingIndexKeys.filter(Boolean).sort()[0];
+  return min ? getIndexBelow(min) : getIndexAbove(ZERO_INDEX_KEY);
 }
 
 // boards.js
@@ -17876,6 +17891,61 @@ function records(room) {
 function shapeIndexKeys(room) {
   return records(room).filter((r) => r.typeName === "shape").map((r) => r.index);
 }
+var isFrameChild = (r) => String(r?.parentId || "").startsWith("shape:");
+function frameOriginsFrom(recs) {
+  const frames = new Map(recs.filter((r) => r.typeName === "shape" && r.type === "frame").map((r) => [r.id, r]));
+  const memo = /* @__PURE__ */ new Map();
+  const origin = (id, depth = 0) => {
+    if (memo.has(id)) return memo.get(id);
+    const f = frames.get(id);
+    if (!f || depth > 32) return { x: 0, y: 0 };
+    const p = isFrameChild(f) ? origin(f.parentId, depth + 1) : { x: 0, y: 0 };
+    const o = { x: f.x + p.x, y: f.y + p.y };
+    memo.set(id, o);
+    return o;
+  };
+  for (const id of frames.keys()) origin(id);
+  return memo;
+}
+function pageXY(r, origins) {
+  const o = isFrameChild(r) && origins.get(r.parentId) || { x: 0, y: 0 };
+  return { x: r.x + o.x, y: r.y + o.y };
+}
+function boundsOf(r) {
+  if (r.type === "note") {
+    const scale = r.props?.scale || 1;
+    return { w: (r.meta?.w ?? 200) * scale, h: (200 + (r.props?.growY || 0)) * scale };
+  }
+  if (r.type === "text") return { w: 0, h: 0 };
+  if (r.props?.w != null && r.props?.h != null) return { w: r.props.w, h: r.props.h };
+  return null;
+}
+var ADOPTABLE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text", "borderLabel", "image", "frame"]);
+function adoptIntoFrame(store, frame) {
+  const recs = store.getAll();
+  const origins = frameOriginsFrom(recs);
+  const fo = pageXY(frame, origins);
+  const fw = frame.props.w, fh = frame.props.h;
+  for (const s of recs) {
+    if (s.typeName !== "shape" || s.id === frame.id || !ADOPTABLE.has(s.type)) continue;
+    if (isFrameChild(s)) continue;
+    const b = boundsOf(s);
+    if (!b) continue;
+    if (s.x >= fo.x - 0.5 && s.y >= fo.y - 0.5 && s.x + b.w <= fo.x + fw + 0.5 && s.y + b.h <= fo.y + fh + 0.5) {
+      store.put({ ...s, parentId: frame.id, x: s.x - fo.x, y: s.y - fo.y });
+    }
+  }
+}
+function releaseFrameChildren(store, frameId, alsoDeleting) {
+  const recs = store.getAll();
+  const origins = frameOriginsFrom(recs);
+  const fo = origins.get(frameId) || { x: 0, y: 0 };
+  for (const s of recs) {
+    if (s.typeName !== "shape" || s.parentId !== frameId) continue;
+    if (alsoDeleting.has(s.id)) continue;
+    store.put({ ...s, parentId: "page:page", x: s.x + fo.x, y: s.y + fo.y });
+  }
+}
 function checkEnum(name, value, allowed) {
   if (value == null) return;
   if (!allowed.includes(value)) throw new Error(`invalid ${name} "${value}". allowed: ${allowed.join(", ")}`);
@@ -17886,18 +17956,21 @@ function extractText(props) {
   const walk = (nodes) => (nodes || []).map((n) => n.type === "text" ? n.text || "" : n.content ? walk(n.content) : "").join("");
   return rt.content.map((p) => walk(p.content)).join("\n").trim() || void 0;
 }
-function mapShape(r) {
+function mapShape(r, origins) {
+  const p = origins ? pageXY(r, origins) : { x: r.x, y: r.y };
   const s = {
     id: r.id,
     type: r.type,
     geo: r.props?.geo,
-    x: Math.round(r.x),
-    y: Math.round(r.y),
+    x: Math.round(p.x),
+    y: Math.round(p.y),
     w: r.props?.w,
     h: r.props?.h,
     color: r.props?.color,
     text: extractText(r.props)
   };
+  if (isFrameChild(r)) s.frame = r.parentId;
+  if (r.type === "frame") s.text = r.props?.name || void 0;
   if (r.type === "uml") {
     s.name = r.props?.name;
     s.fields = r.props?.fields;
@@ -17969,16 +18042,17 @@ function boardView(room, q = {}) {
   const clock = clockOf(snap);
   const allRecs = snap.documents.map((d) => d.state);
   const linkMap = arrowLinkMap(allRecs);
+  const origins = frameOriginsFrom(allRecs);
   const filter = shapeFilter(q);
   if (q.since != null) {
     const shapes2 = attachLinks(
-      snap.documents.filter((d) => (d.lastChangedClock ?? 0) > q.since).map((d) => d.state).filter((r) => r.typeName === "shape").map(mapShape).filter(filter),
+      snap.documents.filter((d) => (d.lastChangedClock ?? 0) > q.since).map((d) => d.state).filter((r) => r.typeName === "shape").map((r) => mapShape(r, origins)).filter(filter),
       linkMap
     );
     const deleted = Object.entries(snap.tombstones || {}).filter(([id, c]) => c > q.since && String(id).startsWith("shape:")).map(([id]) => id);
     return { since: q.since, clock, shapes: shapes2, deleted, counts: { shapes: shapes2.length, deleted: deleted.length } };
   }
-  const shapes = attachLinks(allRecs.filter((r) => r.typeName === "shape").map(mapShape).filter(filter), linkMap);
+  const shapes = attachLinks(allRecs.filter((r) => r.typeName === "shape").map((r) => mapShape(r, origins)).filter(filter), linkMap);
   const bindings = allRecs.filter((r) => r.typeName === "binding");
   return { shapes, clock, counts: { shapes: shapes.length, bindings: bindings.length } };
 }
@@ -18001,7 +18075,8 @@ function queryShapes(room, q = {}) {
   const snap = room.getCurrentSnapshot();
   const allRecs = snap.documents.map((d) => d.state);
   const linkMap = arrowLinkMap(allRecs);
-  const full = attachLinks(allRecs.filter((r) => r.typeName === "shape").map(mapShape).filter(shapeFilter(q)), linkMap);
+  const origins = frameOriginsFrom(allRecs);
+  const full = attachLinks(allRecs.filter((r) => r.typeName === "shape").map((r) => mapShape(r, origins)).filter(shapeFilter(q)), linkMap);
   const shapes = q.fields === "index" ? full.map(indexShape) : q.fields === "text" ? full.map(textShape).filter(Boolean) : full;
   return { shapes, clock: clockOf(snap), counts: { shapes: shapes.length } };
 }
@@ -18037,14 +18112,17 @@ function neighborsView(room, seedIds, hops) {
     frontier = next;
   }
   const want = /* @__PURE__ */ new Set([...visited, ...arrows]);
-  const shapes = attachLinks(allRecs.filter((r) => r.typeName === "shape" && want.has(r.id)).map(mapShape), linkMap);
+  const origins = frameOriginsFrom(allRecs);
+  const shapes = attachLinks(allRecs.filter((r) => r.typeName === "shape" && want.has(r.id)).map((r) => mapShape(r, origins)), linkMap);
   return { seeds, ...missing.length ? { missing } : {}, hops: Math.max(1, hops), clock: clockOf(snap), shapes, counts: { shapes: shapes.length } };
 }
 function overlapReport(room) {
-  const NODE = /* @__PURE__ */ new Set(["geo", "uml"]);
-  const all = records(room).filter((r) => r.typeName === "shape" && NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }));
+  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "frame"]);
+  const recs = records(room);
+  const origins = frameOriginsFrom(recs);
+  const all = recs.filter((r) => r.typeName === "shape" && NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, type: r.type, ...pageXY(r, origins), w: r.props.w, h: r.props.h }));
   const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5;
-  const containerIds = new Set(all.filter((a) => all.some((b) => contains(a, b))).map((a) => a.id));
+  const containerIds = new Set(all.filter((a) => a.type === "frame" || all.some((b) => contains(a, b))).map((a) => a.id));
   const rects = all.filter((r) => !containerIds.has(r.id));
   let overlapArea = 0, pairs = 0, worst = null;
   const offenders = {};
@@ -18105,8 +18183,10 @@ function applyUpdate(store, b) {
   const rec = store.get(b.id);
   if (!rec) throw new Error(`shape ${b.id} not found`);
   const next = { ...rec, props: { ...rec.props } };
-  if (b.x != null) next.x = b.x;
-  if (b.y != null) next.y = b.y;
+  const po = isFrameChild(rec) ? frameOriginsFrom(store.getAll()).get(rec.parentId) || { x: 0, y: 0 } : { x: 0, y: 0 };
+  if (b.x != null) next.x = b.x - po.x;
+  if (b.y != null) next.y = b.y - po.y;
+  if (b.h != null && rec.type === "frame") next.props.h = b.h;
   if (b.w != null && "w" in next.props) next.props.w = b.w;
   if (b.color != null && "color" in next.props) next.props.color = b.color;
   if (b.fill != null && "fill" in next.props) next.props.fill = b.fill;
@@ -18140,24 +18220,29 @@ function applyUpdate(store, b) {
 }
 function moveEnclosed(store, id, dx, dy) {
   const c = store.get(id);
-  if (!c || c.props?.w == null) throw new Error(`container "${id}" not found (must be a box with a size)`);
-  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text"]);
-  const cx = c.x, cy = c.y, cw = c.props.w, ch = c.props.h;
-  const inside = (s) => s.id !== id && s.typeName === "shape" && NODE.has(s.type) && s.props?.w != null && s.x >= cx - 0.5 && s.y >= cy - 0.5 && s.x + s.props.w <= cx + cw + 0.5 && s.y + s.props.h <= cy + ch + 0.5;
+  if (!c || c.props?.w == null) throw new Error(`container "${id}" not found (must be a frame or a box with a size)`);
+  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text", "frame", "borderLabel", "image"]);
+  const origins = frameOriginsFrom(store.getAll());
+  const co = pageXY(c, origins);
+  const cx = co.x, cy = co.y, cw = c.props.w, ch = c.props.h;
+  const inside = (s) => s.id !== id && s.typeName === "shape" && NODE.has(s.type) && s.props?.w != null && !isFrameChild(s) && s.x >= cx - 0.5 && s.y >= cy - 0.5 && s.x + s.props.w <= cx + cw + 0.5 && s.y + s.props.h <= cy + ch + 0.5;
   const targets = [c, ...store.getAll().filter(inside)];
   for (const s of targets) store.put({ ...s, x: s.x + dx, y: s.y + dy });
   return targets.map((s) => s.id);
 }
 function applyMoveContainer(store, b) {
   const c = store.get(b.id);
-  if (!c || c.props?.w == null) throw new Error(`container "${b.id}" not found (must be a box with a size)`);
-  const dx = b.x != null ? b.x - c.x : b.dx || 0;
-  const dy = b.y != null ? b.y - c.y : b.dy || 0;
+  if (!c || c.props?.w == null) throw new Error(`container "${b.id}" not found (must be a frame or a box with a size)`);
+  const co = pageXY(c, frameOriginsFrom(store.getAll()));
+  const dx = b.x != null ? b.x - co.x : b.dx || 0;
+  const dy = b.y != null ? b.y - co.y : b.dy || 0;
   return moveEnclosed(store, b.id, dx, dy);
 }
 function spaceLayout(store, gap, containerId) {
-  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text"]);
-  const rects = store.getAll().filter((r) => r.typeName === "shape" && NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, type: r.type, x: r.x, y: r.y, w: r.props.w, h: r.props.h }));
+  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text", "frame"]);
+  const all = store.getAll().filter((r) => r.typeName === "shape");
+  const origins = frameOriginsFrom(all);
+  const rects = all.filter((r) => NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, type: r.type, parentId: r.parentId, ...pageXY(r, origins), w: r.props.w, h: r.props.h }));
   if (rects.length < 2) return 0;
   const PAD = Math.max(16, Math.round(gap / 2));
   const byId = new Map(rects.map((r) => [r.id, r]));
@@ -18165,6 +18250,11 @@ function spaceLayout(store, gap, containerId) {
   const contains = (a, b) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5;
   const parent = /* @__PURE__ */ new Map();
   for (const r of rects) {
+    const pf = byId.get(r.parentId);
+    if (pf) {
+      parent.set(r.id, pf);
+      continue;
+    }
     let best = null;
     for (const c of rects) if (contains(c, r) && (!best || areaOf(c) < areaOf(best))) best = c;
     parent.set(r.id, best);
@@ -18251,20 +18341,27 @@ function spaceLayout(store, gap, containerId) {
     layout(rects.filter((r) => !parent.get(r.id)));
     affected = new Set(rects.map((r) => r.id));
   }
+  const finalOrigin = (parentId) => {
+    const fr = byId.get(parentId);
+    return fr ? { x: fr.x, y: fr.y } : origins.get(parentId) || { x: 0, y: 0 };
+  };
   for (const id of affected) {
     const r = byId.get(id);
     const rec = store.get(id);
     if (!rec) continue;
-    const next = { ...rec, x: Math.round(r.x), y: Math.round(r.y) };
-    if (isC(r) && rec.type === "geo") next.props = { ...rec.props, w: Math.round(r.w), h: Math.round(r.h) };
+    const o = isFrameChild(rec) ? finalOrigin(rec.parentId) : { x: 0, y: 0 };
+    const next = { ...rec, x: Math.round(r.x - o.x), y: Math.round(r.y - o.y) };
+    if (isC(r) && (rec.type === "geo" || rec.type === "frame")) next.props = { ...rec.props, w: Math.round(r.w), h: Math.round(r.h) };
     store.put(next);
   }
   return affected.size;
 }
 function distributeEvenly(store, ids, axis) {
   if (axis !== "horizontal" && axis !== "vertical") throw new Error(`axis must be "horizontal" or "vertical" (got "${axis}")`);
-  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text"]);
-  const rects = store.getAll().filter((r) => r.typeName === "shape" && NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.props.w, h: r.props.h }));
+  const NODE = /* @__PURE__ */ new Set(["geo", "uml", "note", "text", "frame"]);
+  const all = store.getAll().filter((r) => r.typeName === "shape");
+  const origins = frameOriginsFrom(all);
+  const rects = all.filter((r) => NODE.has(r.type) && r.props?.w != null).map((r) => ({ id: r.id, parentId: r.parentId, ...pageXY(r, origins), w: r.props.w, h: r.props.h }));
   const byId = new Map(rects.map((r) => [r.id, r]));
   const targets = [...new Set(ids)].map((id) => byId.get(id)).filter(Boolean);
   const areaOf = (r) => r.w * r.h;
@@ -18286,7 +18383,7 @@ function distributeEvenly(store, ids, axis) {
   }
   const moveById = new Map(delta);
   for (const r of rects) {
-    if (moveById.has(r.id)) continue;
+    if (moveById.has(r.id) || isFrameChild(r)) continue;
     let host = null;
     for (const t of sorted) if (contains(t, r) && (!host || areaOf(t) < areaOf(host))) host = t;
     if (host) moveById.set(r.id, delta.get(host.id));
@@ -18303,13 +18400,14 @@ function distributeEvenly(store, ids, axis) {
 }
 function reflowArrowLabels(store) {
   const all = store.getAll();
+  const origins = frameOriginsFrom(all);
   const NODE_TYPES = /* @__PURE__ */ new Set(["geo", "uml", "note", "text"]);
   const nodeRects = [];
   for (const r of all) {
     if (r.typeName !== "shape" || !NODE_TYPES.has(r.type)) continue;
     const w = r.props?.w, h = r.props?.h;
     if (w == null || h == null) continue;
-    nodeRects.push({ x: r.x, y: r.y, w, h });
+    nodeRects.push({ ...pageXY(r, origins), w, h });
   }
   const overlapArea = (ax, ay, aw, ah) => {
     let area = 0;
@@ -18333,8 +18431,9 @@ function reflowArrowLabels(store) {
     const s = byId.get(startB.toId), e = byId.get(endB.toId);
     if (!s || !e) continue;
     if (s.props?.w == null || s.props?.h == null || e.props?.w == null || e.props?.h == null) continue;
-    const sx = s.x + s.props.w / 2, sy = s.y + s.props.h / 2;
-    const ex = e.x + e.props.w / 2, ey = e.y + e.props.h / 2;
+    const sp = pageXY(s, origins), ep = pageXY(e, origins);
+    const sx = sp.x + s.props.w / 2, sy = sp.y + s.props.h / 2;
+    const ex = ep.x + e.props.w / 2, ey = ep.y + e.props.h / 2;
     const lines = text.split("\n");
     const labelW = Math.max(...lines.map((l) => l.length)) * 11 + 16;
     const labelH = lines.length * 24 + 8;
@@ -18488,6 +18587,15 @@ var server = import_node_http.default.createServer(async (req, res) => {
         await put(room, rec);
         return json(res, 200, { id: rec.id });
       }
+      if (p === "/frame") {
+        checkEnum("color", b.color, COLORS);
+        const rec = buildFrame({ name: b.name, x: b.x ?? 0, y: b.y ?? 0, w: b.w, h: b.h, color: b.color, index: prevIndex(shapeIndexKeys(room)) });
+        await room.updateStore((store) => {
+          store.put(rec);
+          adoptIntoFrame(store, rec);
+        });
+        return json(res, 200, { id: rec.id });
+      }
       if (p === "/text") {
         checkEnum("color", b.color, COLORS);
         checkEnum("size", b.size, SIZES);
@@ -18586,6 +18694,10 @@ var server = import_node_http.default.createServer(async (req, res) => {
         const ids = Array.isArray(b.ids) ? b.ids : b.id ? [b.id] : [];
         await room.updateStore((store) => {
           const idSet = new Set(ids);
+          for (const id of ids) {
+            const r = store.get(id);
+            if (r?.type === "frame") releaseFrameChildren(store, id, idSet);
+          }
           for (const r of store.getAll()) {
             if (r.typeName === "binding" && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id);
           }
@@ -18642,6 +18754,12 @@ var server = import_node_http.default.createServer(async (req, res) => {
               store.put(asset);
               store.put(shape);
               if (op.ref) refs[op.ref] = shape.id;
+            } else if (k === "frame") {
+              checkEnum("color", op.color, COLORS);
+              const rec = buildFrame({ name: op.name, x: op.x ?? 0, y: op.y ?? 0, w: op.w, h: op.h, color: op.color, index: prevIndex(store.getAll().filter((r) => r.typeName === "shape").map((r) => r.index)) });
+              store.put(rec);
+              adoptIntoFrame(store, rec);
+              if (op.ref) refs[op.ref] = rec.id;
             } else if (k === "border_label") {
               checkEnum("color", op.color, COLORS);
               const rec = buildBorderLabel({ label: op.label, value: op.value, x: op.x ?? 0, y: op.y ?? 0, w: op.w, color: op.color, index: takeIdx() });
@@ -18667,10 +18785,14 @@ var server = import_node_http.default.createServer(async (req, res) => {
             } else if (k === "delete") {
               const ids = (Array.isArray(op.ids) ? op.ids : [op.id]).map(rid3);
               const idSet = new Set(ids);
+              for (const id of ids) {
+                const r = store.get(id);
+                if (r?.type === "frame") releaseFrameChildren(store, id, idSet);
+              }
               for (const r of store.getAll()) if (r.typeName === "binding" && (idSet.has(r.fromId) || idSet.has(r.toId))) store.delete(r.id);
               for (const id of ids) store.delete(id);
             } else {
-              throw new Error(`unknown op "${k}" (use node|text|note|uml|svg|border_label|connect|update|move|move_container|space|distribute|delete)`);
+              throw new Error(`unknown op "${k}" (use node|frame|text|note|uml|svg|border_label|connect|update|move|move_container|space|distribute|delete)`);
             }
           }
           reflowArrowLabels(store);

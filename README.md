@@ -184,6 +184,7 @@ Reading the active board (call `open_board` or `create_board` first):
 
 Editing the active board:
 - `create_node {text,x,y,w?,h?,shape?,color?,fill?}` → id.
+- `create_frame {name,x,y,w?,h?,color?}` → id. A **container** — a native tldraw frame with its name on the top edge. Shapes already inside its bounds are adopted as children (and anything dragged in later joins it), so moving the frame carries its contents natively — in the UI and via `move_container`. Frames render behind their contents; deleting a frame releases its children back to the page.
 - `create_text {text,x,y,color?,size?}` → id.
 - `create_note {text,x,y,color?}` → id.
 - `create_uml {name,x,y,fields?,methods?,color?}` → id. A UML class block (title + fields + methods compartments).
@@ -198,7 +199,7 @@ Editing the active board:
 - `clear_board` — wipe shapes/arrows (keeps the board).
 
 Bulk (build a whole diagram in one transaction):
-- `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`text`/`note`/`uml`/`svg`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. Keep it compact:
+- `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`frame`/`text`/`note`/`uml`/`svg`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. A `frame` op adopts shapes created earlier in the same list that fall inside its bounds. Keep it compact:
   - `defaults` — an object merged under every op (the `op` type too), so shared props aren't repeated: `defaults:{op:"node",w:250,fill:"semi"}`.
   - `{op:"col"|"row", x, y, step?, items[]}` — lay many boxes out from `(x,y)`, stepping down `y` (`col`) or along `x` (`row`); each item is a string or `{text,color?,…}` and inherits the layout op's shared props. Collapses a whole uniform column/grid into one op (irregular spacing → use plain `node` ops).
 

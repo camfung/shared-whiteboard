@@ -36,7 +36,8 @@ Always resolve real shape ids from the board before editing — never guess ids.
 - `update_uml { id, name?, fields?, methods?, color?, x?, y?, w? }` — edit a UML class box.
 - `add_field { id, field }` / `add_method { id, method }` — append a row to a UML box.
 - `connect { fromId, toId, text?, color?, dashed? }` — add an arrow.
-- `move_container { id, x?, y?, dx?, dy? }` — move a container and its contents together.
+- `move_container { id, x?, y?, dx?, dy? }` — move a container (a tldraw frame;
+  see `create_frame`) and its contents together. Legacy container boxes work too.
 - `delete_shapes { ids }` — remove shapes.
 - `clear_board` — wipe the active board (destructive — confirm with the user first).
 - `apply_ops { ops }` — batch many edits atomically in one call.

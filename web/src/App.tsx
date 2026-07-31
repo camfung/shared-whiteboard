@@ -58,12 +58,14 @@ function hashBoard(): string | null {
 // tears down and recreates the sync connection.
 const NODE_TYPES = new Set(['geo', 'uml', 'note', 'text'])
 
-// Make containers behave like frames: when a container box (one enclosing other
-// nodes) is DRAGGED (translated), its contents move with it — but when it's
-// RESIZED, the contents are left alone. The container itself stays a single
-// selection, so resizing scales only the frame, not the nodes inside.
-// Uses a source:'user' store listener so remote (synced) edits never re-trigger
-// it (no cross-client feedback loop).
+// Containers are native tldraw FRAMES now — the editor moves a frame's children
+// itself. This listener keeps two legacy/parity behaviors:
+//  • a legacy container BOX (a geo box enclosing other nodes) still drags its
+//    contents along;
+//  • a dragged frame also carries PAGE-parented shapes that merely sit on top
+//    of it geometrically (its real children ride natively and are skipped).
+// Resizes leave contents alone. Uses a source:'user' store listener so remote
+// (synced) edits never re-trigger it (no cross-client feedback loop).
 function installContainerDrag(editor: any) {
   let busy = false
   return editor.store.listen((entry: any) => {
@@ -73,15 +75,20 @@ function installContainerDrag(editor: any) {
     const moves: any[] = []
     for (const id in updated) {
       const [from, to] = updated[id]
-      if (!from || !to || to.typeName !== 'shape' || !NODE_TYPES.has(to.type)) continue
+      if (!from || !to || to.typeName !== 'shape' || (!NODE_TYPES.has(to.type) && to.type !== 'frame')) continue
       if (from.props?.w == null || to.props?.w == null) continue
       const dx = to.x - from.x, dy = to.y - from.y
       if (dx === 0 && dy === 0) continue                                   // not a move
       if (from.props.w !== to.props.w || from.props.h !== to.props.h) continue // resize → leave contents
-      // shapes enclosed by the container's PREVIOUS bounds (contents haven't moved yet)
-      const px = from.x, py = from.y, pw = from.props.w, ph = from.props.h
+      // page bounds of the container's PREVIOUS position (contents haven't moved yet)
+      const fb = editor.getShapePageBounds(id)
+      if (!fb) continue
+      const px = fb.x - dx, py = fb.y - dy, pw = from.props.w, ph = from.props.h
+      const pageId = editor.getCurrentPageId()
       for (const s of editor.getCurrentPageShapes()) {
-        if (s.id === id || !NODE_TYPES.has(s.type) || s.props?.w == null) continue
+        if (s.id === id || s.props?.w == null) continue
+        if (!NODE_TYPES.has(s.type) && s.type !== 'frame') continue
+        if (s.parentId !== pageId) continue // a frame child rides its frame natively
         const b = editor.getShapePageBounds(s.id)
         if (b && b.x >= px - 0.5 && b.y >= py - 0.5 && b.maxX <= px + pw + 0.5 && b.maxY <= py + ph + 0.5) {
           moves.push({ id: s.id, type: s.type, x: s.x + dx, y: s.y + dy })
@@ -202,11 +209,11 @@ export default function App() {
     setMinGap(gap)
     const PAD = Math.max(16, Math.round(gap / 2)) // padding a container keeps around its contents
 
-    type R = { id: string; type: string; x: number; y: number; w: number; h: number }
-    const NODE = new Set(['geo', 'uml', 'note', 'text'])
+    type R = { id: string; type: string; parentId: string; x: number; y: number; w: number; h: number }
+    const NODE = new Set(['geo', 'uml', 'note', 'text', 'frame'])
     const rects: R[] = ed.getCurrentPageShapes()
       .filter((s: any) => NODE.has(s.type))
-      .map((s: any) => { const b = ed.getShapePageBounds(s.id); return b ? { id: s.id, type: s.type, x: b.x, y: b.y, w: b.w, h: b.h } : null })
+      .map((s: any) => { const b = ed.getShapePageBounds(s.id); return b ? { id: s.id, type: s.type, parentId: s.parentId, x: b.x, y: b.y, w: b.w, h: b.h } : null })
       .filter(Boolean)
     if (rects.length < 2) { alert('Need at least 2 nodes to space.'); return }
     const byId = new Map<string, R>(rects.map((r) => [r.id, r]))
@@ -238,6 +245,8 @@ export default function App() {
     const contains = (a: R, b: R) => a.id !== b.id && a.x <= b.x + 0.5 && a.y <= b.y + 0.5 && a.x + a.w >= b.x + b.w - 0.5 && a.y + a.h >= b.y + b.h - 0.5
     const parent = new Map<string, R | null>()
     for (const r of rects) {
+      const pf = byId.get(r.parentId) // native frame parenting wins
+      if (pf) { parent.set(r.id, pf); continue }
       let best: R | null = null
       for (const c of rects) if (contains(c, r) && (!best || areaOf(c) < areaOf(best))) best = c
       parent.set(r.id, best)
@@ -258,9 +267,13 @@ export default function App() {
       for (const m of members) if (isContainer(m)) { layout(children.get(m.id) as R[]); grow(m) }
       if (members.length > 1) separate(members, move)
     }
+    // rects are page-space; a frame child's stored coords are relative to its
+    // frame's FINAL position (the frame may itself move/grow in the same pass)
     const toUpdate = (r: R) => {
-      const u: any = { id: r.id, type: r.type, x: Math.round(r.x), y: Math.round(r.y) }
-      if (isContainer(r) && r.type === 'geo') u.props = { w: Math.round(r.w), h: Math.round(r.h) }
+      const p = byId.get(r.parentId)
+      const ox = p ? p.x : 0, oy = p ? p.y : 0
+      const u: any = { id: r.id, type: r.type, x: Math.round(r.x - ox), y: Math.round(r.y - oy) }
+      if (isContainer(r) && (r.type === 'geo' || r.type === 'frame')) u.props = { w: Math.round(r.w), h: Math.round(r.h) }
       return u
     }
 
@@ -303,11 +316,11 @@ export default function App() {
   const distributeSelection = (axis: 'horizontal' | 'vertical') => {
     const ed = (window as any).editor
     if (!ed) return
-    type R = { id: string; type: string; x: number; y: number; w: number; h: number }
-    const NODE = new Set(['geo', 'uml', 'note', 'text'])
+    type R = { id: string; type: string; parentId: string; x: number; y: number; w: number; h: number }
+    const NODE = new Set(['geo', 'uml', 'note', 'text', 'frame'])
     const rects: R[] = ed.getCurrentPageShapes()
       .filter((s: any) => NODE.has(s.type))
-      .map((s: any) => { const b = ed.getShapePageBounds(s.id); return b ? { id: s.id, type: s.type, x: b.x, y: b.y, w: b.w, h: b.h } : null })
+      .map((s: any) => { const b = ed.getShapePageBounds(s.id); return b ? { id: s.id, type: s.type, parentId: s.parentId, x: b.x, y: b.y, w: b.w, h: b.h } : null })
       .filter(Boolean)
     const byId = new Map<string, R>(rects.map((r) => [r.id, r]))
     const sel = new Set<string>(ed.getSelectedShapeIds())
@@ -329,17 +342,21 @@ export default function App() {
     let cursor = first[K]
     for (const r of sorted) { delta.set(r.id, cursor - r[K]); cursor += r[S] + gap }
 
-    // propagate each top-level target's delta to the shapes inside it
+    // propagate each top-level target's delta to the PAGE-parented shapes
+    // inside it — a frame child rides its frame natively
+    const pageId = ed.getCurrentPageId()
     const moveById = new Map(delta)
     for (const r of rects) {
-      if (moveById.has(r.id)) continue
+      if (moveById.has(r.id) || r.parentId !== pageId) continue
       let host: R | null = null
       for (const t of sorted) if (contains(t, r) && (!host || areaOf(t) < areaOf(host))) host = t
       if (host) moveById.set(r.id, delta.get(host.id) as number)
     }
 
+    // the delta is the same in page and parent space (parents don't move here),
+    // so apply it to each shape's own stored coordinate
     const updates: any[] = []
-    for (const [id, d] of moveById) { if (!d) continue; const r = byId.get(id) as R; updates.push({ id, type: r.type, [K]: Math.round(r[K] + d) }) }
+    for (const [id, d] of moveById) { if (!d) continue; const r = byId.get(id) as R; const s = ed.getShape(id); if (!s) continue; updates.push({ id, type: r.type, [K]: Math.round(s[K] + d) }) }
     if (updates.length) ed.updateShapes(updates)
   }
 

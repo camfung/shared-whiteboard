@@ -35,6 +35,10 @@ them which.
 ## 3. Create shapes
 
 - `create_node { text, x, y, w?, h?, shape?, color?, fill? }` — a box/node.
+- `create_frame { name, x, y, w?, h?, color? }` — a CONTAINER (native tldraw
+  frame with a name label). Use it for any labeled region/group/lane (module
+  boundary, swimlane, subsystem). Shapes inside its bounds become its children
+  and move with it; never draw a big `create_node` box as a container.
 - `create_uml { name, x, y, fields?, methods?, color? }` — a UML class box.
 - `create_note { text, x, y, color? }` — a sticky note.
 - `create_text { text, x, y, color?, size? }` — free-floating text.
