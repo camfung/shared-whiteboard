@@ -9,6 +9,7 @@ import { BorderLabelShapeUtil } from './borderLabel'
 import { StickyNoteUtil } from './note'
 import { BoardManager } from './BoardManager'
 import { PALETTE, initialTheme, persistTheme, type Theme } from './theme'
+import { ExportDialog, type ExportFormat } from './exportBoard'
 
 // Full util sets — the custom uml shape + our horizontally-growing note, alongside
 // the defaults. StickyNoteUtil replaces the stock NoteShapeUtil (same type 'note',
@@ -83,6 +84,7 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [minGap, setMinGap] = useState(60)
   const [theme, setTheme] = useState<Theme>(initialTheme)
+  const [exportFmt, setExportFmt] = useState<ExportFormat | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -455,6 +457,20 @@ export default function App() {
           <option value="">stamp ▾</option>
           {templates.map((t) => <option key={t.name} value={t.name}>{t.name} · {t.shapes}</option>)}
         </select>
+        <span style={{ width: 1, height: 20, background: p.sep }} />
+        <select
+          value=""
+          disabled={!current || view !== 'board'}
+          onChange={(e) => { const f = e.target.value as ExportFormat; e.target.value = ''; if (f) setExportFmt(f) }}
+          style={{ ...btn, minWidth: 100 }}
+          title="Export this board (or the selection) as an image or PDF"
+        >
+          <option value="">⤓ export ▾</option>
+          <option value="png">PNG</option>
+          <option value="svg">SVG</option>
+          <option value="jpg">JPG</option>
+          <option value="pdf">PDF</option>
+        </select>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {!current && <span style={{ opacity: 0.5 }}>select or create a board</span>}
           <button
@@ -466,6 +482,14 @@ export default function App() {
           </button>
         </span>
       </div>
+      {exportFmt && (window as any).editor && (
+        <ExportDialog
+          editor={(window as any).editor}
+          format={exportFmt}
+          boardName={boards.find((b) => b.id === current)?.name || 'board'}
+          onClose={() => setExportFmt(null)}
+        />
+      )}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {view === 'manager' ? (
           <BoardManager
