@@ -19,6 +19,30 @@ import { ExportDialog, type ExportFormat } from './exportBoard'
 const SHAPE_UTILS = [...defaultShapeUtils.filter((u) => (u as any).type !== 'note'), StickyNoteUtil, UmlShapeUtil, BorderLabelShapeUtil]
 const BINDING_UTILS = defaultBindingUtils
 
+// Serve Hurmit as tldraw's own fonts (subsetted woff2 in public/fonts). This is
+// what makes EXPORTS render in Hurmit: tldraw's FontManager loads + embeds the
+// fonts named tldraw_* into exported SVGs, while page-level CSS (hurmit.css)
+// never reaches the export document. Canvas rendering uses the same faces, so
+// on-screen and exported text now share one source of truth.
+const F = (f: string) => `/fonts/${f}.woff2`
+const HURMIT = {
+  regular: F('HurmitNerdFont-Regular'), bold: F('HurmitNerdFont-Bold'),
+  italic: F('HurmitNerdFont-Italic'), boldItalic: F('HurmitNerdFont-BoldItalic'),
+  mono: F('HurmitNerdFontMono-Regular'),
+}
+const ASSET_URLS = {
+  fonts: {
+    tldraw_draw: HURMIT.regular, tldraw_draw_bold: HURMIT.bold,
+    tldraw_draw_italic: HURMIT.italic, tldraw_draw_italic_bold: HURMIT.boldItalic,
+    tldraw_sans: HURMIT.regular, tldraw_sans_bold: HURMIT.bold,
+    tldraw_sans_italic: HURMIT.italic, tldraw_sans_italic_bold: HURMIT.boldItalic,
+    tldraw_serif: HURMIT.regular, tldraw_serif_bold: HURMIT.bold,
+    tldraw_serif_italic: HURMIT.italic, tldraw_serif_italic_bold: HURMIT.boldItalic,
+    tldraw_mono: HURMIT.mono, tldraw_mono_bold: HURMIT.mono,
+    tldraw_mono_italic: HURMIT.mono, tldraw_mono_italic_bold: HURMIT.mono,
+  },
+}
+
 const API = `http://${location.hostname}:5858`
 const WS = (id: string) => `ws://${location.hostname}:5858/connect/${encodeURIComponent(id)}`
 
@@ -70,7 +94,7 @@ function installContainerDrag(editor: any) {
 
 function BoardCanvas({ boardId, theme }: { boardId: string; theme: Theme }) {
   const store = useSync({ uri: WS(boardId), assets: inlineBase64AssetStore, shapeUtils: SHAPE_UTILS, bindingUtils: BINDING_UTILS })
-  return <Tldraw store={store} shapeUtils={SHAPE_UTILS} bindingUtils={BINDING_UTILS} onMount={(editor) => { (window as any).editor = editor; editor.user.updateUserPreferences({ colorScheme: theme }); return installContainerDrag(editor) }} />
+  return <Tldraw store={store} shapeUtils={SHAPE_UTILS} bindingUtils={BINDING_UTILS} assetUrls={ASSET_URLS} onMount={(editor) => { (window as any).editor = editor; editor.user.updateUserPreferences({ colorScheme: theme }); return installContainerDrag(editor) }} />
 }
 
 type Template = { name: string; shapes: number }
