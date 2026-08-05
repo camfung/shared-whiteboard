@@ -60,6 +60,14 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
     const isEditing = editor.getEditingShapeId() === shape.id
     const { name, fields, methods, color } = shape.props as UmlProps
     const hex = HEX[color] || HEX.blue
+    // Text scales with the shape: compare current size to the natural (content-fit)
+    // size and grow the font by the same ratio. min() so widening alone doesn't
+    // inflate the text past what the height can hold.
+    const scale = Math.max(
+      0.5,
+      Math.min(shape.props.w / umlWidth(name, fields, methods), shape.props.h / umlHeight(fields, methods)),
+    )
+    const fs = Math.round(12 * scale * 10) / 10
     // Match the canvas theme so the box doesn't glare white on a dark board.
     // Reactive: re-renders when the color scheme flips.
     const dark = editor.user.getIsDarkMode()
@@ -74,7 +82,12 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
             defaultValue={serialize(shape.props)}
             onPointerDown={(e) => e.stopPropagation()}
             onBlur={(e) => {
-              editor.updateShape({ id: shape.id, type: 'uml', props: parse(e.currentTarget.value) } as any)
+              // Re-fit to the new content but keep the user's zoom: scale the
+              // natural size by the same ratio the shape had before the edit.
+              const parsed = parse(e.currentTarget.value)
+              parsed.w = Math.round(parsed.w * scale)
+              parsed.h = Math.round(parsed.h * scale)
+              editor.updateShape({ id: shape.id, type: 'uml', props: parsed } as any)
               editor.setEditingShape(null)
             }}
             onKeyDown={(e) => {
@@ -83,7 +96,7 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
             }}
             style={{
               width: '100%', height: '100%', boxSizing: 'border-box', border: `2px solid ${hex}`,
-              borderRadius: 6, padding: 8, font: `12px ${FONT}`, resize: 'none', outline: 'none',
+              borderRadius: 6, padding: 8, font: `${fs}px ${FONT}`, resize: 'none', outline: 'none',
               background: surface, color: ink,
             }}
           />
@@ -91,23 +104,24 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
       )
     }
 
-    const row: React.CSSProperties = { padding: '2px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+    // Paddings in em so the whole layout scales with the font.
+    const row: React.CSSProperties = { padding: '0.167em 0.667em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
     return (
       <HTMLContainer
         style={{
           width: shape.props.w, height: shape.props.h, border: `2px solid ${hex}`, borderRadius: 6,
           background: surface, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-          font: `12px ${FONT}`, color: ink, boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          font: `${fs}px ${FONT}`, color: ink, boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
         }}
       >
-        <div style={{ background: hex, color: '#fff', fontWeight: 700, textAlign: 'center', padding: '6px 8px' }}>
+        <div style={{ background: hex, color: '#fff', fontWeight: 700, textAlign: 'center', padding: '0.5em 0.667em' }}>
           {name}
         </div>
-        <div style={{ padding: '4px 0', flex: fields.length ? '0 0 auto' : undefined }}>
+        <div style={{ padding: '0.333em 0', flex: fields.length ? '0 0 auto' : undefined }}>
           {fields.map((f, i) => <div key={i} style={row}>{f}</div>)}
         </div>
         {methods.length > 0 && <div style={{ borderTop: `1px solid ${hex}` }} />}
-        <div style={{ padding: '4px 0' }}>
+        <div style={{ padding: '0.333em 0' }}>
           {methods.map((m, i) => <div key={i} style={row}>{m}</div>)}
         </div>
       </HTMLContainer>
