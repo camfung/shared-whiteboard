@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { BaseBoxShapeUtil, HTMLContainer, T } from 'tldraw'
 
 // Custom UML class shape: a title bar + fields compartment + methods compartment.
@@ -34,6 +35,48 @@ function parse(text: string) {
 }
 
 const FONT = "'Hurmit Nerd Font', ui-monospace, monospace"
+
+// Editing textarea. The dblclick gesture's default action refocuses the tldraw
+// canvas container a tick after this mounts, so blur alone can't mean "done" —
+// while tldraw still says this shape is editing, a blur is stolen focus and we
+// take it back. The real edit end (click outside, Escape) exits tldraw's
+// editing state, which unmounts us — commit lives in the effect cleanup.
+function UmlEditing({ editor, shape, scale, style }: { editor: any; shape: any; scale: number; style: React.CSSProperties }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const initial = useRef(serialize(shape.props))
+  const text = useRef(initial.current)
+  useEffect(() => {
+    ref.current?.focus()
+    return () => {
+      if (text.current === initial.current) return
+      // Re-fit to the new content but keep the user's zoom: scale the natural
+      // size by the same ratio the shape had before the edit.
+      const parsed = parse(text.current)
+      parsed.w = Math.round(parsed.w * scale)
+      parsed.h = Math.round(parsed.h * scale)
+      editor.updateShape({ id: shape.id, type: 'uml', props: parsed })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <textarea
+      ref={ref}
+      defaultValue={initial.current}
+      onInput={(e) => { text.current = e.currentTarget.value }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={() => {
+        requestAnimationFrame(() => {
+          if (editor.getEditingShapeId() === shape.id) ref.current?.focus()
+        })
+      }}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Escape') editor.setEditingShape(null)
+      }}
+      style={style}
+    />
+  )
+}
 
 export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
   static override type = 'uml' as const
@@ -77,23 +120,10 @@ export class UmlShapeUtil extends BaseBoxShapeUtil<any> {
     if (isEditing) {
       return (
         <HTMLContainer style={{ pointerEvents: 'all' }}>
-          <textarea
-            autoFocus
-            defaultValue={serialize(shape.props)}
-            onPointerDown={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              // Re-fit to the new content but keep the user's zoom: scale the
-              // natural size by the same ratio the shape had before the edit.
-              const parsed = parse(e.currentTarget.value)
-              parsed.w = Math.round(parsed.w * scale)
-              parsed.h = Math.round(parsed.h * scale)
-              editor.updateShape({ id: shape.id, type: 'uml', props: parsed } as any)
-              editor.setEditingShape(null)
-            }}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === 'Escape') e.currentTarget.blur()
-            }}
+          <UmlEditing
+            editor={editor}
+            shape={shape}
+            scale={scale}
             style={{
               width: '100%', height: '100%', boxSizing: 'border-box', border: `2px solid ${hex}`,
               borderRadius: 6, padding: 8, font: `${fs}px ${FONT}`, resize: 'none', outline: 'none',

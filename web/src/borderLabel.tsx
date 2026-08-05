@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { BaseBoxShapeUtil, HTMLContainer, T } from 'tldraw'
 
 // Custom "border label" shape: a native <fieldset>/<legend> — the label sits in a
@@ -28,6 +29,47 @@ export function borderLabelSize(label = '', value = '', w?: number) {
 type BorderLabelProps = { label: string; value: string; w: number; h: number; color: string }
 
 const FONT = "'Hurmit Nerd Font', ui-monospace, monospace"
+
+// Editing form. Same focus dance as UmlEditing (uml.tsx): the dblclick gesture's
+// default action refocuses the tldraw canvas right after mount, so a blur while
+// tldraw still says this shape is editing means stolen focus — take it back.
+// Real edit ends unmount us; commit lives in the effect cleanup.
+function BorderLabelEditing({ editor, shape, frame, legend, bare, hex, ink }: any) {
+  const valueRef = useRef<HTMLInputElement>(null)
+  const boxRef = useRef<HTMLFieldSetElement>(null)
+  const initial = useRef({ label: shape.props.label as string, value: shape.props.value as string })
+  const current = useRef({ ...initial.current })
+  useEffect(() => {
+    valueRef.current?.focus()
+    return () => {
+      const { label: l, value: v } = current.current
+      if (l === initial.current.label && v === initial.current.value) return
+      const size = borderLabelSize(l, v)
+      editor.updateShape({ id: shape.id, type: 'borderLabel', props: { label: l, value: v, w: size.w, h: size.h } })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const stop = (e: any) => e.stopPropagation()
+  const key = (e: any) => { e.stopPropagation(); if (e.key === 'Escape' || e.key === 'Enter') editor.setEditingShape(null) }
+  const blur = (e: React.FocusEvent<HTMLFieldSetElement>) => {
+    if (boxRef.current?.contains(e.relatedTarget as Node)) return // moving between the two inputs
+    requestAnimationFrame(() => {
+      if (editor.getEditingShapeId() === shape.id && !boxRef.current?.contains(document.activeElement)) valueRef.current?.focus()
+    })
+  }
+  return (
+    <fieldset ref={boxRef} style={frame} onPointerDown={stop} onBlur={blur}>
+      <legend style={legend}>
+        <input className="bl-label" defaultValue={initial.current.label} onPointerDown={stop} onKeyDown={key}
+          onInput={(e) => { current.current.label = e.currentTarget.value }}
+          style={{ ...bare, color: hex, font: `${LABEL_FS}px ${FONT}`, width: Math.max(40, (initial.current.label.length + 2) * LABEL_FS * CHAR) }} />
+      </legend>
+      <input className="bl-value" ref={valueRef} defaultValue={initial.current.value} onPointerDown={stop} onKeyDown={key}
+        onInput={(e) => { current.current.value = e.currentTarget.value }}
+        style={{ ...bare, color: ink, font: `${VALUE_FS}px ${FONT}`, width: '100%' }} />
+    </fieldset>
+  )
+}
 
 export class BorderLabelShapeUtil extends BaseBoxShapeUtil<any> {
   static override type = 'borderLabel' as const
@@ -70,28 +112,10 @@ export class BorderLabelShapeUtil extends BaseBoxShapeUtil<any> {
     }
 
     if (isEditing) {
-      const stop = (e: any) => e.stopPropagation()
-      const key = (e: any) => { e.stopPropagation(); if (e.key === 'Escape' || e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }
-      const commit = (e: React.FocusEvent<HTMLFieldSetElement>) => {
-        const box = e.currentTarget
-        if (box.contains(e.relatedTarget as Node)) return // moving between the two inputs
-        const l = (box.querySelector('.bl-label') as HTMLInputElement).value
-        const v = (box.querySelector('.bl-value') as HTMLInputElement).value
-        const size = borderLabelSize(l, v)
-        editor.updateShape({ id: shape.id, type: 'borderLabel', props: { label: l, value: v, w: size.w, h: size.h } } as any)
-        editor.setEditingShape(null)
-      }
       const bare: React.CSSProperties = { background: 'transparent', border: 'none', outline: 'none', padding: 0, margin: 0 }
       return (
         <HTMLContainer style={{ pointerEvents: 'all' }}>
-          <fieldset style={frame} onPointerDown={stop} onBlur={commit}>
-            <legend style={legend}>
-              <input className="bl-label" defaultValue={label} onPointerDown={stop} onKeyDown={key}
-                style={{ ...bare, color: hex, font: `${LABEL_FS}px ${FONT}`, width: Math.max(40, (label.length + 2) * LABEL_FS * CHAR) }} />
-            </legend>
-            <input className="bl-value" autoFocus defaultValue={value} onPointerDown={stop} onKeyDown={key}
-              style={{ ...bare, color: ink, font: `${VALUE_FS}px ${FONT}`, width: '100%' }} />
-          </fieldset>
+          <BorderLabelEditing editor={editor} shape={shape} frame={frame} legend={legend} bare={bare} hex={hex} ink={ink} />
         </HTMLContainer>
       )
     }
