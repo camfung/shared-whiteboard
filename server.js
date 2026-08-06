@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import {
   buildGeo, buildText, buildNote, buildArrow, buildArrowBinding, buildUml, buildSvg, buildBorderLabel, buildFrame,
-  geoSizeForText, noteBox, richText, nextIndex, prevIndex, COLORS, FILLS, GEO, SIZES,
+  geoSizeForText, noteBox, svgViewBox, bumpSize, richText, nextIndex, prevIndex, COLORS, FILLS, GEO, SIZES,
 } from './shapes.js'
 import { umlHeight, umlWidth } from './uml-schema.js'
+import { borderLabelSize } from './borderlabel-schema.js'
 import { getIndexAbove } from '@tldraw/utils'
 import {
   getRoom, listBoards, createBoard, renameBoard, deleteBoard, findBoards, boardExists,
@@ -682,36 +683,119 @@ function roomFor(url) {
   return getRoom(boardId(url))
 }
 
+// Page-space size a create op will occupy, computed the SAME way its builder
+// computes it (shapes.js / *-schema.js). Flow layout uses this to pack boxes
+// flush by their real extent — the LLM never sees these auto-fit sizes, so it
+// can't do the arithmetic itself. Falls back to a rough box for text (auto-sized
+// so it has no stored w/h) and a sane default for anything unmeasurable.
+function measureOp(op = {}) {
+  const kind = op.op || 'node'
+  if (kind === 'uml') {
+    return {
+      w: op.w != null ? op.w : umlWidth(op.name, op.fields || [], op.methods || []),
+      h: umlHeight(op.fields || [], op.methods || []),
+    }
+  }
+  if (kind === 'note') {
+    const { size: s, scale } = bumpSize(op.size)
+    const nb = noteBox(op.text, s)
+    return { w: nb.w * scale, h: (200 + nb.growY) * scale }
+  }
+  if (kind === 'border_label') return borderLabelSize(op.label, op.value, op.w)
+  if (kind === 'frame') return { w: op.w ?? 400, h: op.h ?? 300 }
+  if (kind === 'svg') {
+    const box = svgViewBox(op.svg || '')
+    return { w: op.w != null ? op.w : box.w, h: op.h != null ? op.h : box.h }
+  }
+  if (kind === 'text') {
+    const { size: s, scale } = bumpSize(op.size)
+    const fs = ({ s: 18, m: 24, l: 36, xl: 44 }[s] || 24) * scale
+    const lines = String(op.text || '').split('\n')
+    const maxLen = Math.max(1, ...lines.map((l) => l.length))
+    return { w: Math.round(maxLen * fs * 0.62), h: Math.round(lines.length * fs * 1.4) }
+  }
+  // node (geo): mirror buildGeo — bump the size, single-line unless nowrap:false.
+  const { size: s, scale } = bumpSize(op.size)
+  const nowrap = op.nowrap == null ? true : op.nowrap
+  return geoSizeForText(op.text, s, op.shape || 'rectangle', scale, op.w != null ? op.w : null, nowrap)
+}
+
+// Room an arrow's label needs along the flow axis, using the same rough bbox
+// estimate as reflowArrowLabels (server.js) so the two agree. LABEL_MARGIN is
+// breathing room on each side of the label within the gap.
+const LABEL_MARGIN = 24
+function labelExtent(text, horizontal) {
+  const lines = String(text).split('\n')
+  const ext = horizontal
+    ? Math.max(1, ...lines.map((l) => l.length)) * 11 + 16 // label width
+    : lines.length * 24 + 8 // label height
+  return ext + 2 * LABEL_MARGIN
+}
+
 // Flatten the ops array for /batch, cutting the repetition in a hand-written
 // ops list two ways:
 //   • a batch-level `defaults` object is merged UNDER every op (op type too),
 //     so shared props (op:"node", w, fill, ...) aren't repeated per op.
-//   • a `col`/`row` op lays a list of boxes out from (x,y) stepping down y
-//     (col) or along x (row); each item is a string or {text, color?, ...} and
+//   • a `col`/`row` op lays a list of boxes out from (x,y) going down y (col)
+//     or along x (row); each item is a string or {text, color?, ...} and
 //     inherits the layout op's shared node props — no repeated x/op/w/fill and
-//     no hand-computed y for each row.
+//     no hand-computed coordinate per row.
+//
+// Placement modes for col/row:
+//   • FLOW-PACK (default, no explicit `step`): each box is placed flush after
+//     the previous box's MEASURED extent + `gap` (default 40 col / 60 row). Box
+//     sizes auto-fit their text, so this is the only way to stack them without
+//     the LLM knowing the heights. If two adjacent items are joined by a
+//     labelled `connect` op, the gap grows to fit the arrow's label (which can
+//     only slide along the arrow, never dodge sideways — so the room must exist).
+//   • FIXED-STEP (explicit `step`): legacy behaviour — advance by a constant
+//     `step` px regardless of size. Kept for callers that want a rigid grid.
 // Returns concrete ops (node/text/note/uml/connect/update/...) the loop below
 // already understands.
 function expandOps(rawOps, defaults = {}) {
+  // Pre-scan connect ops so flow layout can reserve room for an arrow's label
+  // between two flow-adjacent boxes (keyed on their refs, both directions).
+  const edgeLabels = new Map()
+  for (const raw of rawOps) {
+    const op = { ...defaults, ...raw }
+    if (op.op === 'connect' && op.text && op.from != null && op.to != null) {
+      edgeLabels.set(`${op.from} ${op.to}`, String(op.text))
+    }
+  }
+  const labelBetween = (a, b) =>
+    (a != null && b != null &&
+      (edgeLabels.get(`${a} ${b}`) || edgeLabels.get(`${b} ${a}`))) || null
+
   const out = []
   for (const raw of rawOps) {
     const op = { ...defaults, ...raw }
     if (op.op === 'col' || op.op === 'row') {
       const horizontal = op.op === 'row'
-      const step = Number.isFinite(op.step) ? op.step : (horizontal ? 200 : 50)
       const x0 = op.x ?? 0
       const y0 = op.y ?? 0
-      const { op: _op, items, x: _x, y: _y, step: _step, ...shared } = op
+      const fixedStep = Number.isFinite(op.step) ? op.step : null
+      const gap = Number.isFinite(op.gap) ? op.gap : (horizontal ? 60 : 40)
+      const { op: _op, items, x: _x, y: _y, step: _step, gap: _gap, ...shared } = op
       const list = Array.isArray(items) ? items : []
+      let cursor = horizontal ? x0 : y0
+      let prevRef = null
       list.forEach((it, i) => {
         const item = typeof it === 'string' ? { text: it } : (it || {})
-        out.push({
-          op: item.op || 'node',
-          ...shared,
-          ...item,
-          x: horizontal ? x0 + i * step : x0,
-          y: horizontal ? y0 : y0 + i * step,
-        })
+        const node = { op: item.op || 'node', ...shared, ...item }
+        if (fixedStep != null) {
+          cursor = (horizontal ? x0 : y0) + i * fixedStep
+        } else if (i > 0) {
+          const lbl = labelBetween(prevRef, item.ref)
+          cursor += lbl ? Math.max(gap, labelExtent(lbl, horizontal)) : gap
+        }
+        node.x = horizontal ? cursor : x0
+        node.y = horizontal ? y0 : cursor
+        out.push(node)
+        if (fixedStep == null) {
+          const size = measureOp(node)
+          cursor += horizontal ? size.w : size.h
+        }
+        prevRef = item.ref ?? null
       })
     } else {
       out.push(op)

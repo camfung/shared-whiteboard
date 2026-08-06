@@ -31358,7 +31358,8 @@ Ops:
 - {op:"space", gap?, container?}   (tidy spacing; whole board, or scoped to a container id)
 - {op:"distribute", ids:[...], axis:"horizontal"|"vertical"}   (even the gaps between 3+ nodes along one axis; end nodes stay put)
 - {op:"delete", ids:[...]}
-- {op:"col"|"row", x, y, step?, items:[...], + any shared node props (w/shape/color/fill/size)}  \u2014 lay out MANY boxes in one op: from (x,y), "col" steps down y / "row" steps along x by "step" (default 50/200). Each item is a bare string (text) or {text, color?, ...} and inherits the layout op's shared props. Collapses a whole column/grid of boxes into a single op \u2014 no repeated x/op/w/fill and no hand-computed y per row.
+- {op:"col"|"row", x, y, gap?, items:[...], + any shared node props (w/shape/color/fill/size)}  \u2014 lay out MANY boxes in one op: from (x,y), "col" flows down / "row" flows across. Each item is a bare string (text) or {text, ref?, color?, ...} and inherits the layout op's shared props. Collapses a whole column/row of boxes into a single op \u2014 no repeated x/op/w/fill and no hand-computed coordinate per box.
+  FLOW-PACK (default): each box is placed flush after the previous box's real (auto-fit) size + "gap" (default 40 col / 60 row) \u2014 you DON'T need to know the box heights/widths. Give items a "ref" and add {op:"connect", from, to, text} between two adjacent refs and the gap auto-grows to fit the arrow's label. Pass "step" instead of "gap" to force a fixed constant stride (legacy, size-blind).
 Top-level "defaults": an object merged UNDER every op (the op type included), so you don't repeat shared props. e.g. defaults:{op:"node",w:250,fill:"semi"} then ops:[{text:"GND",x:180,y:166,color:"grey"}, ...]. Per-op values override defaults.
 Returns {refs:{ref:createdId}, count} (count = concrete shapes after col/row expansion). Colors: ${COLORS}. Shapes: ${GEOS}.`,
   inputSchema: {

@@ -18458,26 +18458,81 @@ function boardId(url) {
 function roomFor(url) {
   return getRoom(boardId(url));
 }
+function measureOp(op = {}) {
+  const kind = op.op || "node";
+  if (kind === "uml") {
+    return {
+      w: op.w != null ? op.w : umlWidth(op.name, op.fields || [], op.methods || []),
+      h: umlHeight(op.fields || [], op.methods || [])
+    };
+  }
+  if (kind === "note") {
+    const { size: s2, scale: scale2 } = bumpSize(op.size);
+    const nb = noteBox(op.text, s2);
+    return { w: nb.w * scale2, h: (200 + nb.growY) * scale2 };
+  }
+  if (kind === "border_label") return borderLabelSize(op.label, op.value, op.w);
+  if (kind === "frame") return { w: op.w ?? 400, h: op.h ?? 300 };
+  if (kind === "svg") {
+    const box = svgViewBox(op.svg || "");
+    return { w: op.w != null ? op.w : box.w, h: op.h != null ? op.h : box.h };
+  }
+  if (kind === "text") {
+    const { size: s2, scale: scale2 } = bumpSize(op.size);
+    const fs4 = ({ s: 18, m: 24, l: 36, xl: 44 }[s2] || 24) * scale2;
+    const lines = String(op.text || "").split("\n");
+    const maxLen = Math.max(1, ...lines.map((l) => l.length));
+    return { w: Math.round(maxLen * fs4 * 0.62), h: Math.round(lines.length * fs4 * 1.4) };
+  }
+  const { size: s, scale } = bumpSize(op.size);
+  const nowrap = op.nowrap == null ? true : op.nowrap;
+  return geoSizeForText(op.text, s, op.shape || "rectangle", scale, op.w != null ? op.w : null, nowrap);
+}
+var LABEL_MARGIN = 24;
+function labelExtent(text, horizontal) {
+  const lines = String(text).split("\n");
+  const ext = horizontal ? Math.max(1, ...lines.map((l) => l.length)) * 11 + 16 : lines.length * 24 + 8;
+  return ext + 2 * LABEL_MARGIN;
+}
 function expandOps(rawOps, defaults = {}) {
+  const edgeLabels = /* @__PURE__ */ new Map();
+  for (const raw of rawOps) {
+    const op = { ...defaults, ...raw };
+    if (op.op === "connect" && op.text && op.from != null && op.to != null) {
+      edgeLabels.set(`${op.from}\0${op.to}`, String(op.text));
+    }
+  }
+  const labelBetween = (a, b) => a != null && b != null && (edgeLabels.get(`${a}\0${b}`) || edgeLabels.get(`${b}\0${a}`)) || null;
   const out = [];
   for (const raw of rawOps) {
     const op = { ...defaults, ...raw };
     if (op.op === "col" || op.op === "row") {
       const horizontal = op.op === "row";
-      const step = Number.isFinite(op.step) ? op.step : horizontal ? 200 : 50;
       const x0 = op.x ?? 0;
       const y0 = op.y ?? 0;
-      const { op: _op, items, x: _x, y: _y, step: _step, ...shared } = op;
+      const fixedStep = Number.isFinite(op.step) ? op.step : null;
+      const gap = Number.isFinite(op.gap) ? op.gap : horizontal ? 60 : 40;
+      const { op: _op, items, x: _x, y: _y, step: _step, gap: _gap, ...shared } = op;
       const list = Array.isArray(items) ? items : [];
+      let cursor = horizontal ? x0 : y0;
+      let prevRef = null;
       list.forEach((it, i) => {
         const item = typeof it === "string" ? { text: it } : it || {};
-        out.push({
-          op: item.op || "node",
-          ...shared,
-          ...item,
-          x: horizontal ? x0 + i * step : x0,
-          y: horizontal ? y0 : y0 + i * step
-        });
+        const node = { op: item.op || "node", ...shared, ...item };
+        if (fixedStep != null) {
+          cursor = (horizontal ? x0 : y0) + i * fixedStep;
+        } else if (i > 0) {
+          const lbl = labelBetween(prevRef, item.ref);
+          cursor += lbl ? Math.max(gap, labelExtent(lbl, horizontal)) : gap;
+        }
+        node.x = horizontal ? cursor : x0;
+        node.y = horizontal ? y0 : cursor;
+        out.push(node);
+        if (fixedStep == null) {
+          const size = measureOp(node);
+          cursor += horizontal ? size.w : size.h;
+        }
+        prevRef = item.ref ?? null;
       });
     } else {
       out.push(op);

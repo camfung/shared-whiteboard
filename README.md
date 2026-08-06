@@ -201,7 +201,7 @@ Editing the active board:
 Bulk (build a whole diagram in one transaction):
 - `apply_ops {ops[], defaults?}` — an ordered list of ops (`node`/`frame`/`text`/`note`/`uml`/`svg`/`connect`/`update`/`move`/`delete`); a create op's `ref` lets later ops connect/move it in the same call. A `frame` op adopts shapes created earlier in the same list that fall inside its bounds. Keep it compact:
   - `defaults` — an object merged under every op (the `op` type too), so shared props aren't repeated: `defaults:{op:"node",w:250,fill:"semi"}`.
-  - `{op:"col"|"row", x, y, step?, items[]}` — lay many boxes out from `(x,y)`, stepping down `y` (`col`) or along `x` (`row`); each item is a string or `{text,color?,…}` and inherits the layout op's shared props. Collapses a whole uniform column/grid into one op (irregular spacing → use plain `node` ops).
+  - `{op:"col"|"row", x, y, gap?, items[]}` — lay many boxes out from `(x,y)`, flowing down (`col`) or across (`row`); each item is a string or `{text,ref?,color?,…}` and inherits the layout op's shared props. Collapses a whole column/row into one op. **Flow-pack** (default): each box sits flush after the previous box's real auto-fit size + `gap` (default 40 col / 60 row) — you don't compute or even know the box sizes. Give items a `ref` and add a labelled `connect` between two adjacent refs and the gap auto-grows to fit the arrow's label. Pass `step` instead of `gap` for a fixed constant stride (legacy, size-blind).
 
 Reusable templates (save a block once, stamp copies anywhere):
 - `list_templates` — saved templates (name + shape count).
